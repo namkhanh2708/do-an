@@ -1,0 +1,6 @@
+{
+  "name": "PulseSRE - Mission-Critical Observability & Incident Platform",
+  "description": "Production-grade Site Reliability Engineering (SRE) observability dashboard, live telemetry mesh, incident command center, golden signals, and automated runbook platform.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

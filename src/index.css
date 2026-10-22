@@ -1,0 +1,141 @@
+@import "tailwindcss";
+
+@theme {
+  --color-surface: #0f131c;
+  --color-surface-dim: #0f131c;
+  --color-surface-bright: #353943;
+  --color-surface-container-lowest: #0a0e17;
+  --color-surface-container-low: #181b25;
+  --color-surface-container: #1c1f29;
+  --color-surface-container-high: #262a34;
+  --color-surface-container-highest: #31353f;
+  --color-on-surface: #dfe2ef;
+  --color-on-surface-variant: #bbcabf;
+  --color-inverse-surface: #dfe2ef;
+  --color-inverse-on-surface: #2c303a;
+  --color-outline: #86948a;
+  --color-outline-variant: #3c4a42;
+  --color-surface-tint: #4edea3;
+  --color-primary: #4edea3;
+  --color-on-primary: #003824;
+  --color-primary-container: #10b981;
+  --color-on-primary-container: #00422b;
+  --color-inverse-primary: #006c49;
+  --color-secondary: #c0c1ff;
+  --color-on-secondary: #1000a9;
+  --color-secondary-container: #3131c0;
+  --color-on-secondary-container: #b0b2ff;
+  --color-tertiary: #ffb95f;
+  --color-on-tertiary: #472a00;
+  --color-tertiary-container: #e29100;
+  --color-on-tertiary-container: #523200;
+  --color-error: #ffb4ab;
+  --color-on-error: #690005;
+  --color-error-container: #93000a;
+  --color-on-error-container: #ffdad6;
+  --color-primary-fixed: #6ffbbe;
+  --color-primary-fixed-dim: #4edea3;
+  --color-on-primary-fixed: #002113;
+  --color-on-primary-fixed-variant: #005236;
+  --color-secondary-fixed: #e1e0ff;
+  --color-secondary-fixed-dim: #c0c1ff;
+  --color-on-secondary-fixed: #07006c;
+  --color-on-secondary-fixed-variant: #2f2ebe;
+  --color-tertiary-fixed: #ffddb8;
+  --color-tertiary-fixed-dim: #ffb95f;
+  --color-on-tertiary-fixed: #2a1700;
+  --color-on-tertiary-fixed-variant: #653e00;
+  --color-background: #0f131c;
+  --color-on-background: #dfe2ef;
+  --color-surface-variant: #31353f;
+
+  --spacing-space-xs: 0.25rem;
+  --spacing-space-sm: 0.5rem;
+  --spacing-space-md: 0.75rem;
+  --spacing-space-lg: 1rem;
+  --spacing-space-xl: 1.5rem;
+  --spacing-margin: 1rem;
+  --spacing-margin-tablet: 1.5rem;
+  --spacing-margin-desktop: 2rem;
+  --spacing-gutter: 0.75rem;
+  --spacing-gutter-tablet: 1rem;
+  --spacing-gutter-desktop: 1.25rem;
+}
+
+@layer base {
+  html, body {
+    margin: 0;
+    padding: 0;
+    background-color: #0f131c;
+    color: #dfe2ef;
+    font-family: 'Inter', sans-serif;
+    font-variant-numeric: tabular-nums;
+  }
+  
+  /* Custom scrollbar for technical observability */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #0a0e17;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #262a34;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #31353f;
+  }
+}
+
+/* Material Symbols font helper */
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+  vertical-align: middle;
+}
+
+/* Typography Utility Classes matching prototype specs */
+.font-headline-lg { font-family: 'Inter', sans-serif; font-weight: 700; }
+.text-headline-lg { font-size: 32px; line-height: 38px; }
+
+.font-headline-md { font-family: 'Inter', sans-serif; font-weight: 600; }
+.text-headline-md { font-size: 20px; line-height: 26px; }
+
+.font-headline-sm { font-family: 'Inter', sans-serif; font-weight: 600; }
+.text-headline-sm { font-size: 16px; line-height: 22px; }
+
+.font-body-lg { font-family: 'Inter', sans-serif; font-weight: 400; }
+.text-body-lg { font-size: 15px; line-height: 22px; }
+
+.font-body-md { font-family: 'Inter', sans-serif; font-weight: 400; }
+.text-body-md { font-size: 13px; line-height: 18px; }
+
+.font-body-sm { font-family: 'Inter', sans-serif; font-weight: 400; }
+.text-body-sm { font-size: 12px; line-height: 16px; }
+
+.font-metric-display { font-family: 'JetBrains Mono', monospace; font-weight: 600; font-variant-numeric: tabular-nums; }
+.text-metric-display { font-size: 28px; line-height: 32px; }
+
+.font-metric-display-mobile { font-family: 'JetBrains Mono', monospace; font-weight: 600; font-variant-numeric: tabular-nums; }
+.text-metric-display-mobile { font-size: 22px; line-height: 26px; }
+
+.font-label-mono-sm { font-family: 'JetBrains Mono', monospace; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: 0.05em; }
+.text-label-mono-sm { font-size: 10px; line-height: 14px; }
+
+.font-label-mono-md { font-family: 'JetBrains Mono', monospace; font-weight: 500; font-variant-numeric: tabular-nums; }
+.text-label-mono-md { font-size: 12px; line-height: 16px; }
+
+.font-code-inline { font-family: 'JetBrains Mono', monospace; font-weight: 400; font-variant-numeric: tabular-nums; }
+.text-code-inline { font-size: 11px; line-height: 15px; }
