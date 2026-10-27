@@ -6,6 +6,7 @@ import type { TimeRange } from '../types/app';
 import { formatDate, formatMs, formatPercent, statusLabel } from '../utils/format';
 import { rangeLabels } from '../utils/report';
 import { StatusBadge } from './charts';
+import { DiagnosisPanel } from './dashboard-widgets';
 
 export function MonitorDialog({
   monitor,
@@ -133,7 +134,10 @@ export function HistoryDialog({
                       <td><StatusBadge status={check.status} /></td>
                       <td>{check.httpStatus ?? '—'}</td>
                       <td>{formatMs(check.responseTimeMs)}</td>
-                      <td className={tw("check-error")}>{check.error || '—'}</td>
+                      <td className={tw(check.diagnosis ? 'check-error-diagnosis' : 'check-error')}>
+                        {check.error || '—'}
+                        {check.diagnosis && <DiagnosisPanel diagnosis={check.diagnosis} compact />}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -319,4 +323,5 @@ const tailwindClasses: Record<string, string> = {
   'dialog-actions': 'mt-1 flex justify-end gap-2',
   'history-table': 'max-h-[54vh] max-[640px]:-mx-[17px] max-[640px]:w-[calc(100%+34px)] [&_th]:px-3 [&_th]:py-[10px] [&_td]:px-3 [&_td]:py-[10px]',
   'check-error': 'max-w-[230px] overflow-hidden text-ellipsis text-[#a6b4c6]',
+  'check-error-diagnosis': 'min-w-[250px] max-w-[390px] whitespace-normal text-[#a6b4c6]',
 };

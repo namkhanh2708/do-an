@@ -8,6 +8,7 @@ import cron from 'node-cron';
 import express from 'express';
 import mongoose from 'mongoose';
 import nodemailer from 'nodemailer';
+import { diagnoseCheck } from './diagnosis.js';
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
@@ -38,6 +39,7 @@ const checkSchema = new mongoose.Schema({
   responseTimeMs: { type: Number, default: null },
   httpStatus: { type: Number, default: null },
   error: { type: String, default: '' },
+  diagnosis: { type: mongoose.Schema.Types.Mixed, default: null },
   checkedAt: { type: Date, default: Date.now, index: true },
 });
 
@@ -49,6 +51,7 @@ const incidentSchema = new mongoose.Schema({
   resolvedAt: { type: Date, default: null },
   status: { type: String, enum: ['OPEN', 'RESOLVED'], default: 'OPEN' },
   durationMs: { type: Number, default: null },
+  diagnosis: { type: mongoose.Schema.Types.Mixed, default: null },
 });
 
 const Monitor = mongoose.model('Monitor', monitorSchema);
@@ -201,7 +204,7 @@ async function openIncidentFor(monitorId) {
   return memory.incidents.find((item) => item.monitorId === monitorId && item.status === 'OPEN') ?? null;
 }
 
-async function startIncident(monitor) {
+async function startIncident(monitor, diagnosis) {
   const incident = {
     monitorId: monitor.id,
     monitorName: monitor.name,
@@ -210,11 +213,20 @@ async function startIncident(monitor) {
     resolvedAt: null,
     status: 'OPEN',
     durationMs: null,
+    diagnosis,
   };
   if (storageMode === 'mongodb') return serialize(await Incident.create(incident));
   const stored = { ...incident, id: crypto.randomUUID() };
   memory.incidents.push(stored);
   return stored;
+}
+
+async function updateIncidentDiagnosis(incident, diagnosis) {
+  if (storageMode === 'mongodb') {
+    await Incident.findByIdAndUpdate(incident.id, { diagnosis });
+    return;
+  }
+  incident.diagnosis = diagnosis;
 }
 
 async function resolveIncident(incident) {
@@ -284,7 +296,7 @@ function validateMonitorInput(body, current = {}) {
   };
 }
 
-async function notifyTransition(monitor, status, checkedAt) {
+async function notifyTransition(monitor, status, checkedAt, diagnosis = null) {
   const recipient = monitor.notificationEmail || process.env.ALERT_EMAIL;
   if (!recipient) {
     console.warn(`[alert] Chưa cấu hình email nhận cảnh báo cho "${monitor.name}".`);
@@ -303,6 +315,19 @@ async function notifyTransition(monitor, status, checkedAt) {
     `URL: ${monitor.url}`,
     `Trạng thái: ${status}`,
     `Thời điểm: ${new Date(checkedAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`,
+    ...(diagnosis ? [
+      '',
+      'Dấu hiệu đã ghi nhận:',
+      ...diagnosis.evidence.map((item) => `- ${item}`),
+      '',
+      'Nguyên nhân có thể (chưa xác nhận):',
+      ...diagnosis.possibleCauses.map((item) => `- ${item}`),
+      '',
+      'Hướng kiểm tra/khắc phục:',
+      ...diagnosis.recommendedActions.map((item, index) => `${index + 1}. ${item}`),
+      '',
+      diagnosis.confidenceNote,
+    ] : []),
   ].join('\n');
   try {
     await mailer.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: recipient, subject, text });
@@ -360,10 +385,18 @@ async function performCheck(id) {
       lastHttpStatus: httpStatus,
       lastError: errorMessage,
     });
-    const check = await saveCheck({ monitorId: id, status, responseTimeMs, httpStatus, error: errorMessage, checkedAt });
+    const recentChecks = await checksFor({ monitorId: id, limit: 4 });
+    const checkData = { monitorId: id, status, responseTimeMs, httpStatus, error: errorMessage, checkedAt };
+    const diagnosis = diagnoseCheck(checkData, [checkData, ...recentChecks], monitor.slowThresholdMs);
+    const check = await saveCheck({ ...checkData, diagnosis });
     if (status === 'DOWN' && previousStatus !== 'DOWN') {
-      if (!await openIncidentFor(id)) await startIncident(updated);
-      await notifyTransition(updated, status, checkedAt);
+      let incident = await openIncidentFor(id);
+      if (incident) await updateIncidentDiagnosis(incident, diagnosis);
+      else incident = await startIncident(updated, diagnosis);
+      await notifyTransition(updated, status, checkedAt, diagnosis);
+    } else if (status === 'DOWN') {
+      const incident = await openIncidentFor(id);
+      if (incident) await updateIncidentDiagnosis(incident, diagnosis);
     } else if (previousStatus === 'DOWN' && status !== 'DOWN') {
       const incident = await openIncidentFor(id);
       if (incident) await resolveIncident(incident);

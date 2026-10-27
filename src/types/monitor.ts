@@ -23,7 +23,16 @@ export interface HealthCheck {
   responseTimeMs: number | null;
   httpStatus: number | null;
   error: string;
+  diagnosis?: Diagnosis | null;
   checkedAt: string;
+}
+
+export interface Diagnosis {
+  signal: Exclude<MonitorStatus, 'UNKNOWN'>;
+  evidence: string[];
+  possibleCauses: string[];
+  recommendedActions: string[];
+  confidenceNote: string;
 }
 
 export interface Incident {
@@ -35,6 +44,7 @@ export interface Incident {
   resolvedAt: string | null;
   status: 'OPEN' | 'RESOLVED';
   durationMs: number | null;
+  diagnosis?: Diagnosis | null;
 }
 
 export interface ReportMonitor extends Monitor {

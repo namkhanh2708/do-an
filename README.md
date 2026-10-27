@@ -25,6 +25,7 @@ Dashboard theo dõi tính sẵn sàng và hiệu suất của website, xây dự
 4. Kiểm tra mã nguồn và tạo bản build:
 
    ```bash
+   npm test
    npm run lint
    npm run build
    ```
@@ -46,7 +47,8 @@ Vite và Express lắng nghe trên các giao diện mạng của máy chạy ứ
 - **Quản lý website:** thêm, sửa, xóa URL; bật/tắt giám sát; tìm kiếm; kiểm tra thủ công; xem lịch sử từng lượt kiểm tra. Xóa website sẽ xóa cả lịch sử kiểm tra và sự cố liên quan.
 - **Tự động giám sát:** kiểm tra HTTP định kỳ mỗi 1, 5 hoặc 15 phút; ghi nhận mã HTTP, độ trễ và thời điểm; phân loại DOWN khi lỗi kết nối hoặc HTTP 4xx/5xx, SLOW khi vượt ngưỡng cấu hình, các phản hồi khác là UP.
 - **Lịch sử sự cố:** mở sự cố khi website chuyển sang DOWN, tránh ghi lặp trong cùng sự cố và lưu thời điểm phục hồi cùng thời gian gián đoạn.
-- **Thông báo email:** gửi email một lần khi DOWN và một lần khi phục hồi. Có thể cấu hình email riêng trên monitor hoặc dùng `ALERT_EMAIL` mặc định.
+- **Phân tích sự cố:** chẩn đoán theo quy tắc từ HTTP status, timeout, response time và tối đa 5 lượt kiểm tra gần nhất; hiển thị bằng chứng, nguyên nhân có thể và hướng xử lý trong nhật ký sự cố/lịch sử kiểm tra. Nguyên nhân chỉ là giả thuyết, không thay thế log hoặc số liệu máy chủ.
+- **Thông báo email:** gửi email một lần khi DOWN (kèm bằng chứng và khuyến nghị chẩn đoán) và một lần khi phục hồi. Có thể cấu hình email riêng trên monitor hoặc dùng `ALERT_EMAIL` mặc định.
 - **Báo cáo:** lọc theo website và 24 giờ/7 ngày/30 ngày, thống kê từng website và xuất CSV.
 - **An toàn URL:** chỉ nhận HTTP/HTTPS công khai; từ chối localhost/địa chỉ nội bộ và kiểm tra lại địa chỉ đích khi theo dõi/chuyển hướng.
 - **Tự làm mới:** dashboard tải lại dữ liệu định kỳ mỗi 30 giây; API health báo trạng thái MongoDB và SMTP.
