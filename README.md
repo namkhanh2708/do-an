@@ -31,6 +31,15 @@ Dashboard theo dõi tính sẵn sàng và hiệu suất của website, xây dự
 
    Chạy bản production bằng `npm start` sau khi đã build. Express phục vụ API và các tệp trong `dist`.
 
+### Truy cập từ thiết bị khác cùng Wi-Fi
+
+1. Kết nối máy chạy ứng dụng và thiết bị còn lại vào cùng một mạng Wi-Fi.
+2. Trên máy chạy ứng dụng, mở Command Prompt và chạy `ipconfig`; lấy địa chỉ **IPv4** của bộ điều hợp Wi-Fi (thường có dạng `192.168.x.x` hoặc `10.x.x.x`).
+3. Khởi chạy ứng dụng bằng `npm run dev`, rồi mở `http://<IPv4>:3000` trên thiết bị còn lại, thay `<IPv4>` bằng địa chỉ vừa tìm được.
+4. Nếu không kết nối được, cho phép Node.js qua Windows Defender Firewall trên mạng **Private** hoặc tạo quy tắc cho cổng TCP `3000`. Không bật cho mạng **Public**, không chuyển tiếp cổng trên router; một số Wi-Fi có chế độ cô lập thiết bị cần được tắt mới truy cập được.
+
+Vite và Express lắng nghe trên các giao diện mạng của máy chạy ứng dụng. Khi dùng bản production (`npm run build` rồi `npm start`), truy cập `http://<IPv4>:4000` thay vì cổng `3000`.
+
 ## Chức năng
 
 - **Dashboard:** tổng số lượt kiểm tra, uptime theo khoảng thời gian, thời gian phản hồi trung bình, số sự cố, thời gian khôi phục trung bình, biểu đồ độ trễ và trạng thái UP/SLOW/DOWN.

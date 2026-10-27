@@ -593,7 +593,7 @@ async function start() {
     console.warn('[alert] Chưa cấu hình SMTP_HOST; email cảnh báo đang tắt.');
   }
 
-  app.listen(port, () => console.info(`[server] API sẵn sàng tại http://localhost:${port}`));
+  app.listen(port, '0.0.0.0', () => console.info(`[server] API sẵn sàng tại http://localhost:${port}`));
   cron.schedule('* * * * *', () => {
     void runScheduledChecks().catch((error) => console.error('[monitor] Lịch kiểm tra thất bại:', error));
   });
