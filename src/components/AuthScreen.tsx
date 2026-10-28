@@ -1,11 +1,12 @@
 import { useState, type FormEvent } from 'react';
 import { AlertTriangle, HeartPulse, LogIn, UserPlus } from 'lucide-react';
 import { api } from '../api';
+import type { Account } from '../types/monitor';
 
 type AuthMode = 'login' | 'register';
 
 // Màn hình đăng nhập và đăng ký tài khoản qua backend.
-export default function AuthScreen({ onAuthenticated }: { onAuthenticated: (username: string) => void }) {
+export default function AuthScreen({ onAuthenticated }: { onAuthenticated: (account: Account) => void }) {
   const [mode, setMode] = useState<AuthMode>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -54,7 +55,7 @@ export default function AuthScreen({ onAuthenticated }: { onAuthenticated: (user
         setNotice('Tạo tài khoản thành công. Hãy đăng nhập bằng tài khoản vừa tạo.');
       } else {
         const account = await api.login(normalizedUsername, password);
-        onAuthenticated(account.username);
+        onAuthenticated(account);
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Không thể kết nối máy chủ xác thực.');

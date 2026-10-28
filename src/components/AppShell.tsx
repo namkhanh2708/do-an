@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import type { ApiHealth } from '../types/monitor';
 import type { Page, TimeRange } from '../types/app';
+import type { UserRole } from '../types/monitor';
 import { rangeLabels } from '../utils/report';
 import { CircleHelpIcon } from './dashboard-widgets';
 
@@ -38,6 +39,7 @@ interface AppShellProps {
   actionError: string;
   notice: string;
   username: string;
+  role: UserRole;
   onPageChange: (page: Page) => void;
   onRangeChange: (range: TimeRange) => void;
   onMobileNavChange: (isOpen: boolean) => void;
@@ -72,6 +74,11 @@ const pageDetails: Record<Page, { eyebrow: string; title: string; subtitle: stri
     title: 'Báo cáo phân tích',
     subtitle: 'Uptime, thời gian phản hồi và thống kê theo từng website.',
   },
+  users: {
+    eyebrow: 'QUẢN TRỊ HỆ THỐNG',
+    title: 'Quản lý tài khoản',
+    subtitle: 'Tạo tài khoản, phân quyền và kiểm soát trạng thái truy cập.',
+  },
 };
 
 export default function AppShell({
@@ -87,6 +94,7 @@ export default function AppShell({
   actionError,
   notice,
   username,
+  role,
   onPageChange,
   onRangeChange,
   onMobileNavChange,
@@ -136,7 +144,7 @@ export default function AppShell({
           </div>
           <div className={tw('user-card')}>
             <span className={tw('user-avatar')}>{username.slice(0, 1).toUpperCase()}</span>
-            <span className={tw('user-name')}><small>Đang đăng nhập</small><strong>{username}</strong></span>
+            <span className={tw('user-name')}><small>{role === 'admin' ? 'Quản trị viên' : 'Người dùng'}</small><strong>{username}</strong></span>
             <button className={tw('icon-button logout-button')} type="button" title="Đăng xuất" aria-label="Đăng xuất" onClick={onLogout}>
               <LogOut size={15} />
             </button>
@@ -168,9 +176,9 @@ export default function AppShell({
             <button className={tw('icon-button top-refresh')} title="Làm mới dữ liệu" onClick={onRefresh} disabled={refreshing}>
               {refreshing ? <LoaderCircle className={tw('spin')} size={17} /> : <RefreshCw size={17} />}
             </button>
-            <button className={tw('button button-primary top-add')} onClick={onCreateMonitor}>
+            {role === 'admin' && <button className={tw('button button-primary top-add')} onClick={onCreateMonitor}>
               <Plus size={16} /> Thêm website
-            </button>
+            </button>}
           </div>
         </header>
 

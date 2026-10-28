@@ -1,5 +1,5 @@
 import type { Page, TimeRange } from '../types/app';
-import type { Incident, Monitor, Report } from '../types/monitor';
+import type { Account, Incident, Monitor, Report, UserRole } from '../types/monitor';
 
 export interface PageContentProps {
   page: Page;
@@ -9,6 +9,9 @@ export interface PageContentProps {
   monitors: Monitor[];
   incidents: Incident[];
   activeIncidents: number;
+  isAdmin: boolean;
+  accounts: Account[];
+  currentAccountId: string;
   loading: boolean;
   monitorFilter: string;
   search: string;
@@ -23,6 +26,10 @@ export interface PageContentProps {
   checkMonitor: (monitor: Monitor) => void;
   setHistoryMonitor: (monitor: Monitor) => void;
   exportCsv: () => void;
+  onAccountCreate: (username: string, password: string, role: UserRole) => Promise<void>;
+  onAccountUpdate: (id: string, changes: { role?: UserRole; isActive?: boolean }) => Promise<void>;
+  onAccountDelete: (id: string) => Promise<void>;
+  onMonitorAssignmentsChange: (userId: string, monitorIds: string[]) => Promise<void>;
 }
 
 export type DashboardPageProps = Pick<
@@ -40,6 +47,7 @@ export type DashboardPageProps = Pick<
   | 'toggleMonitor'
   | 'checkMonitor'
   | 'setHistoryMonitor'
+  | 'isAdmin'
 >;
 
 export type MonitorsPageProps = Pick<
@@ -56,6 +64,19 @@ export type MonitorsPageProps = Pick<
   | 'checkMonitor'
   | 'setHistoryMonitor'
   | 'checkingId'
+  | 'isAdmin'
+>;
+
+export type UsersPageProps = Pick<
+  PageContentProps,
+  | 'accounts'
+  | 'monitors'
+  | 'isAdmin'
+  | 'currentAccountId'
+  | 'onAccountCreate'
+  | 'onAccountUpdate'
+  | 'onAccountDelete'
+  | 'onMonitorAssignmentsChange'
 >;
 
 export type IncidentsPageProps = Pick<

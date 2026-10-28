@@ -30,13 +30,17 @@ export default function DashboardPage({
   toggleMonitor,
   checkMonitor,
   setHistoryMonitor,
+  isAdmin,
 }: DashboardPageProps) {
+  const enabledMonitorIds = new Set(monitors.filter((monitor) => monitor.enabled).map((monitor) => monitor.id));
+  const monitoredIncidents = incidents.filter((incident) => enabledMonitorIds.has(incident.monitorId));
+
   return (
     <>
       <section className={tw('metric-grid')}>
         <MetricCard icon={<ShieldCheck size={17} />} label="UPTIME" value={formatPercent(report.summary.uptimePercent)} note={`${report.summary.totalChecks.toLocaleString('vi-VN')} lượt kiểm tra`} color="green" />
         <MetricCard icon={<Activity size={17} />} label="PHẢN HỒI TRUNG BÌNH" value={formatMs(report.summary.averageResponseTimeMs)} note={`Trong ${rangeLabels[range].toLowerCase()}`} color="blue" />
-        <MetricCard icon={<AlertTriangle size={17} />} label="SỰ CỐ" value={String(report.summary.incidentCount)} note={`${activeIncidents} sự cố đang mở`} color="amber" />
+        <MetricCard icon={<AlertTriangle size={17} />} label="SỰ CỐ" value={String(monitoredIncidents.length)} note={`${activeIncidents} sự cố website`} color="amber" />
         <MetricCard icon={<Clock3 size={17} />} label="THỜI GIAN KHÔI PHỤC TB" value={formatDuration(report.summary.meanRecoveryTimeMs)} note="Các sự cố đã xử lý" color="purple" />
       </section>
 
@@ -72,13 +76,14 @@ export default function DashboardPage({
             onHistory={setHistoryMonitor}
             checkingId={checkingId}
             compact
+            readOnly={!isAdmin}
           />
         )}
       </section>
 
       <section className={tw('panel incidents-preview')}>
         <PanelHeading title="Sự cố gần đây" subtitle="Website DOWN và thời gian khôi phục" action={<button className={tw('text-button')} onClick={() => setPage('incidents')}>Xem lịch sử <ArrowRight size={15} /></button>} />
-        {incidents.length === 0 ? <div className={tw('empty-inline')}><CheckCircle2 size={17} /> Chưa ghi nhận sự cố nào trong khoảng thời gian này.</div> : incidents.slice(0, 3).map((incident) => <IncidentRow key={incident.id} incident={incident} />)}
+        {monitoredIncidents.length === 0 ? <div className={tw('empty-inline')}><CheckCircle2 size={17} /> Chưa ghi nhận sự cố nào từ các website đang được giám sát trong khoảng thời gian này.</div> : monitoredIncidents.slice(0, 3).map((incident) => <IncidentRow key={incident.id} incident={incident} />)}
       </section>
     </>
   );

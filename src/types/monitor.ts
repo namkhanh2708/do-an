@@ -1,4 +1,13 @@
 export type MonitorStatus = 'UP' | 'DOWN' | 'SLOW' | 'UNKNOWN';
+export type UserRole = 'admin' | 'user';
+
+export interface Account {
+  id: string;
+  username: string;
+  role: UserRole;
+  isActive: boolean;
+  createdAt: string;
+}
 
 export interface Monitor {
   id: string;
@@ -8,6 +17,7 @@ export interface Monitor {
   intervalSeconds: number;
   slowThresholdMs: number;
   notificationEmail: string;
+  ownerId: string;
   status: MonitorStatus;
   lastCheckedAt: string | null;
   lastResponseTimeMs: number | null;
@@ -78,5 +88,5 @@ export interface ApiHealth {
 
 export type MonitorInput = Pick<
   Monitor,
-  'name' | 'url' | 'enabled' | 'intervalSeconds' | 'slowThresholdMs' | 'notificationEmail'
+  'name' | 'url' | 'enabled' | 'intervalSeconds' | 'slowThresholdMs' | 'notificationEmail' | 'ownerId'
 >;

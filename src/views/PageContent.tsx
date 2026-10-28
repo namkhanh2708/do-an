@@ -3,6 +3,7 @@ import DashboardPage from './DashboardPage';
 import IncidentsPage from './IncidentsPage';
 import MonitorsPage from './MonitorsPage';
 import ReportsPage from './ReportsPage';
+import UsersPage from './UsersPage';
 import type { PageContentProps } from './types';
 
 // Điều phối nội dung theo màn hình đang chọn.
@@ -18,5 +19,7 @@ export default function PageContent(props: PageContentProps) {
       return <IncidentsPage {...props} statusFilter={statusFilter} setStatusFilter={setStatusFilter} />;
     case 'reports':
       return <ReportsPage {...props} />;
+    case 'users':
+      return <UsersPage {...props} />;
   }
 }

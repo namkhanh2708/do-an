@@ -18,13 +18,14 @@ export default function MonitorsPage({
   checkMonitor,
   setHistoryMonitor,
   checkingId,
+  isAdmin,
 }: MonitorsPageProps) {
   return (
     <section className={tw('panel table-panel full-table-panel')}>
       <PanelHeading
         title="Danh sách website"
-        subtitle="Quản lý URL, tần suất kiểm tra và trạng thái giám sát"
-        action={<button className={tw('button button-primary')} onClick={openCreateDialog}><Plus size={15} /> Thêm website</button>}
+        subtitle={isAdmin ? 'Quản lý URL, tần suất kiểm tra và trạng thái giám sát' : 'Trạng thái và hiệu suất các website được cấp quyền xem'}
+        action={isAdmin ? <button className={tw('button button-primary')} onClick={openCreateDialog}><Plus size={15} /> Thêm website</button> : undefined}
       />
       {loading ? <LoadingRow /> : (
         <MonitorTable
@@ -38,6 +39,7 @@ export default function MonitorsPage({
           onCheck={checkMonitor}
           onHistory={setHistoryMonitor}
           checkingId={checkingId}
+          readOnly={!isAdmin}
         />
       )}
     </section>

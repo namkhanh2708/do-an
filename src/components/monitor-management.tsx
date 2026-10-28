@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { AlertTriangle, Check, ExternalLink, Globe2, History, LoaderCircle, Pause, Pencil, Play, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import { api } from '../api';
-import type { HealthCheck, Monitor, MonitorInput, MonitorStatus, Report } from '../types/monitor';
+import type { Account, HealthCheck, Monitor, MonitorInput, MonitorStatus, Report } from '../types/monitor';
 import type { TimeRange } from '../types/app';
 import { formatDate, formatMs, formatPercent, statusLabel } from '../utils/format';
 import { rangeLabels } from '../utils/report';
@@ -11,12 +11,14 @@ import { DiagnosisPanel } from './dashboard-widgets';
 // Tạo mới hoặc chỉnh sửa cấu hình giám sát website.
 export function MonitorDialog({
   monitor,
+  users,
   saving,
   error,
   onClose,
   onSave,
 }: {
   monitor: Monitor | null;
+  users: Account[];
   saving: boolean;
   error: string;
   onClose: () => void;
@@ -27,10 +29,11 @@ export function MonitorDialog({
   const [intervalSeconds, setIntervalSeconds] = useState(monitor?.intervalSeconds ?? 60);
   const [slowThresholdMs, setSlowThresholdMs] = useState(monitor?.slowThresholdMs ?? 1000);
   const [notificationEmail, setNotificationEmail] = useState(monitor?.notificationEmail ?? '');
+  const [ownerId, setOwnerId] = useState(monitor?.ownerId ?? '');
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    onSave({ name: name.trim(), url: url.trim(), enabled: monitor?.enabled ?? true, intervalSeconds, slowThresholdMs, notificationEmail: notificationEmail.trim() });
+    onSave({ name: name.trim(), url: url.trim(), enabled: monitor?.enabled ?? true, intervalSeconds, slowThresholdMs, notificationEmail: notificationEmail.trim(), ownerId });
   }
 
   return (
@@ -75,6 +78,16 @@ export function MonitorDialog({
             Email nhận cảnh báo (tùy chọn)
             <input type="email" placeholder="admin@example.com" value={notificationEmail} onChange={(event) => setNotificationEmail(event.target.value)} />
             <small>Nhận email khi website DOWN và khi đã khôi phục.</small>
+          </label>
+          <label>
+            Cho phép User theo dõi
+            <select value={ownerId} onChange={(event) => setOwnerId(event.target.value)}>
+              <option value="">Chỉ Admin xem được</option>
+              {users.filter((user) => user.role === 'user' && user.isActive).map((user) => (
+                <option key={user.id} value={user.id}>{user.username}</option>
+              ))}
+            </select>
+            <small>User được gán mới xem được website, lịch sử và báo cáo liên quan.</small>
           </label>
           <div className={tw("dialog-actions")}>
             <button type="button" className={tw("button button-quiet")} onClick={onClose}>Hủy</button>
@@ -199,6 +212,7 @@ export function MonitorTable({
   onHistory,
   checkingId,
   compact = false,
+  readOnly = false,
 }: {
   monitors: Monitor[];
   reportRows: Report['monitors'];
@@ -211,6 +225,7 @@ export function MonitorTable({
   onHistory: (monitor: Monitor) => void;
   checkingId: string | null;
   compact?: boolean;
+  readOnly?: boolean;
 }) {
   const filtered = monitors.filter((monitor) => {
     const query = search?.trim().toLowerCase();
@@ -238,7 +253,7 @@ export function MonitorTable({
             <thead><tr>
               <th>WEBSITE</th><th>TRẠNG THÁI</th><th>UPTIME</th><th>PHẢN HỒI</th>
               {!compact && <th>LẦN KIỂM TRA CUỐI</th>}
-              <th>HÀNH ĐỘNG</th>
+              {!readOnly && <th>HÀNH ĐỘNG</th>}
             </tr></thead>
             <tbody>
               {filtered.map((monitor) => {
@@ -255,7 +270,7 @@ export function MonitorTable({
                     <td className={tw("number-cell")}>{formatPercent(stats?.uptimePercent ?? null)}</td>
                     <td className={tw("number-cell")}>{formatMs(monitor.lastResponseTimeMs ?? stats?.averageResponseTimeMs)}</td>
                     {!compact && <td className={tw("date-cell")}>{formatDate(monitor.lastCheckedAt)}</td>}
-                    <td>
+                    {!readOnly && <td>
                       <div className={tw("row-actions")}>
                         <button className={tw("icon-button small")} title="Kiểm tra ngay" aria-label={`Kiểm tra ${monitor.name}`} disabled={checkingId === monitor.id || !monitor.enabled} onClick={() => onCheck(monitor)}>
                           {checkingId === monitor.id ? <LoaderCircle size={15} className={tw("spin")} /> : <RefreshCw size={15} />}
@@ -265,7 +280,7 @@ export function MonitorTable({
                         <button className={tw("icon-button small")} title={monitor.enabled ? 'Tạm dừng' : 'Bật giám sát'} aria-label={monitor.enabled ? `Tạm dừng ${monitor.name}` : `Bật ${monitor.name}`} onClick={() => onToggle(monitor)}>{monitor.enabled ? <Pause size={15} /> : <Play size={15} />}</button>
                         <button className={tw("icon-button small icon-danger")} title="Xóa website" aria-label={`Xóa ${monitor.name}`} onClick={() => onDelete(monitor)}><Trash2 size={15} /></button>
                       </div>
-                    </td>
+                    </td>}
                   </tr>
                 );
               })}

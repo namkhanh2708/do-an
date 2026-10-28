@@ -5,14 +5,16 @@ import {
   type LucideIcon,
   LayoutDashboard,
   MonitorCheck,
+  Users,
 } from 'lucide-react';
 import { api } from './api';
+import { ApiError } from './api/client';
 import AppShell from './components/AppShell';
 import AuthScreen from './components/AuthScreen';
 import { DeleteMonitorDialog, HistoryDialog, MonitorDialog } from './components/monitor-management';
 import PageContent from './views/PageContent';
 import type { Page, TimeRange } from './types/app';
-import type { ApiHealth, Incident, Monitor, MonitorInput, Report } from './types/monitor';
+import type { Account, ApiHealth, Incident, Monitor, MonitorInput, Report, UserRole } from './types/monitor';
 import { formatMs, statusLabel } from './utils/format';
 import { emptyReport } from './utils/report';
 
@@ -22,7 +24,8 @@ const legacyAccountsStorageKey = 'uptime-watch-accounts';
 // Điều phối phiên đăng nhập, dữ liệu và các thao tác chính của dashboard.
 export default function App() {
   // Khởi tạo trạng thái phiên đăng nhập trong bộ nhớ ứng dụng.
-  const [authenticatedUser, setAuthenticatedUser] = useState('');
+  const [currentUser, setCurrentUser] = useState<Account | null>(null);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [page, setPage] = useState<Page>('dashboard');
   const [range, setRange] = useState<TimeRange>('7d');
   const [monitorFilter, setMonitorFilter] = useState('');
@@ -48,27 +51,42 @@ export default function App() {
 
   // Tải và đồng bộ dữ liệu sức khỏe, website, báo cáo và sự cố.
   const refresh = useCallback(async (quiet = false) => {
-    if (!authenticatedUser) return;
+    if (!currentUser) return;
     if (!quiet) setRefreshing(true);
     try {
-      const [nextHealth, nextMonitors, nextReport, nextIncidents] = await Promise.all([
+      const [nextHealth, nextMonitors, nextReport, nextIncidents, nextAccounts] = await Promise.all([
         api.health(),
         api.monitors(),
         api.report(range, monitorFilter || undefined),
         api.incidents(range),
+        currentUser.role === 'admin' ? api.users() : Promise.resolve([]),
       ]);
       setHealth(nextHealth);
       setMonitors(nextMonitors);
       setReport(nextReport);
       setIncidents(nextIncidents);
+      setAccounts(nextAccounts);
       setApiError('');
     } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        setCurrentUser(null);
+        setAccounts([]);
+        setLoading(false);
+        return;
+      }
       setApiError(error instanceof Error ? error.message : 'Không thể kết nối máy chủ.');
     } finally {
       setLoading(false);
       if (!quiet) setRefreshing(false);
     }
-  }, [authenticatedUser, range, monitorFilter]);
+  }, [currentUser, range, monitorFilter]);
+
+  useEffect(() => {
+    api.me()
+      .then(setCurrentUser)
+      .catch(() => setCurrentUser(null))
+      .finally(() => setLoading(false));
+  }, []);
 
   // Xóa phiên giả và tài khoản lưu dạng văn bản thuần từ phiên bản demo cũ.
   useEffect(() => {
@@ -76,12 +94,12 @@ export default function App() {
     window.localStorage.removeItem(legacyAccountsStorageKey);
   }, []);
 
-  useEffect(() => { if (authenticatedUser) void refresh(); }, [authenticatedUser, refresh]);
+  useEffect(() => { if (currentUser) void refresh(); }, [currentUser, refresh]);
   useEffect(() => {
-    if (!authenticatedUser) return;
+    if (!currentUser) return;
     const timer = window.setInterval(() => { void refresh(true); }, 30_000);
     return () => window.clearInterval(timer);
-  }, [authenticatedUser, refresh]);
+  }, [currentUser, refresh]);
   useEffect(() => {
     if (!notice) return;
     const timer = window.setTimeout(() => setNotice(''), 3600);
@@ -127,6 +145,7 @@ export default function App() {
         intervalSeconds: monitor.intervalSeconds,
         slowThresholdMs: monitor.slowThresholdMs,
         notificationEmail: monitor.notificationEmail,
+        ownerId: monitor.ownerId,
       });
       setNotice(monitor.enabled ? 'Đã tạm dừng giám sát.' : 'Đã bật lại giám sát.');
       await refresh(true);
@@ -155,13 +174,66 @@ export default function App() {
   }
 
   // Lưu người dùng đã xác thực vào phiên trình duyệt.
-  function handleAuthenticated(username: string) {
-    setAuthenticatedUser(username);
+  function handleAuthenticated(account: Account) {
+    setCurrentUser(account);
+    setPage('dashboard');
   }
 
   // Kết thúc phiên đăng nhập hiện tại.
-  function handleLogout() {
-    setAuthenticatedUser('');
+  async function handleLogout() {
+    setActionError('');
+    try {
+      await api.logout();
+      setCurrentUser(null);
+      setAccounts([]);
+      setMonitors([]);
+      setReport(emptyReport);
+      setIncidents([]);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Không thể đăng xuất.');
+    }
+  }
+
+  async function createAccount(username: string, password: string, role: UserRole) {
+    await api.createUser(username, password, role);
+    setAccounts(await api.users());
+  }
+
+  async function updateAccount(id: string, changes: { role?: UserRole; isActive?: boolean }) {
+    await api.updateUser(id, changes);
+    setAccounts(await api.users());
+  }
+
+  async function deleteAccount(id: string) {
+    await api.deleteUser(id);
+    setAccounts(await api.users());
+    await refresh(true);
+  }
+
+  async function changeMonitorAssignments(userId: string, assignedMonitorIds: string[]) {
+    const assigned = new Set(assignedMonitorIds);
+    const updates = monitors.filter((monitor) => {
+      const ownerId = monitor.ownerId ?? '';
+      return (assigned.has(monitor.id) && ownerId !== userId) ||
+        (!assigned.has(monitor.id) && ownerId === userId);
+    });
+
+    try {
+      await Promise.all(updates.map((monitor) => api.updateMonitor(monitor.id, {
+        name: monitor.name,
+        url: monitor.url,
+        enabled: monitor.enabled,
+        intervalSeconds: monitor.intervalSeconds,
+        slowThresholdMs: monitor.slowThresholdMs,
+        notificationEmail: monitor.notificationEmail,
+        ownerId: assigned.has(monitor.id) ? userId : '',
+      })));
+    } catch (error) {
+      setMonitors(await api.monitors());
+      throw error;
+    }
+
+    await refresh(true);
   }
 
   // Yêu cầu kiểm tra website ngay lập tức.
@@ -225,9 +297,18 @@ export default function App() {
     { id: 'incidents', label: 'Lịch sử sự cố', icon: AlertTriangle },
     { id: 'reports', label: 'Báo cáo', icon: BarChart3 },
   ];
-  const activeIncidents = incidents.filter((incident) => incident.status === 'OPEN').length;
+  if (currentUser?.role === 'admin') {
+    navigation.push({ id: 'users', label: 'Quản lý tài khoản', icon: Users });
+  }
+  const enabledMonitorIds = new Set(monitors.filter((monitor) => monitor.enabled).map((monitor) => monitor.id));
+  const activeIncidents = incidents.filter((incident) =>
+    incident.status === 'OPEN' && enabledMonitorIds.has(incident.monitorId)).length;
 
-  if (!authenticatedUser) {
+  if (!currentUser && loading) {
+    return <main className="grid min-h-screen place-items-center bg-[#101827] text-[#e6edf8]" role="status">Đang kiểm tra phiên đăng nhập…</main>;
+  }
+
+  if (!currentUser) {
     return <AuthScreen onAuthenticated={handleAuthenticated} />;
   }
 
@@ -244,7 +325,8 @@ export default function App() {
       apiError={apiError}
       actionError={actionError}
       notice={notice}
-      username={authenticatedUser}
+      username={currentUser.username}
+      role={currentUser.role}
       onPageChange={setPage}
       onRangeChange={setRange}
       onMobileNavChange={setMobileNavOpen}
@@ -260,6 +342,7 @@ export default function App() {
             <MonitorDialog
               key={editingMonitor?.id ?? 'new-monitor'}
               monitor={editingMonitor}
+              users={accounts}
               saving={saving}
               error={actionError}
               onClose={() => { setDialogOpen(false); setEditingMonitor(null); }}
@@ -281,6 +364,9 @@ export default function App() {
     >
       <PageContent
         page={page}
+        isAdmin={currentUser.role === 'admin'}
+        accounts={accounts}
+        currentAccountId={currentUser.id}
         range={range}
         report={report}
         selectedReport={selectedReport}
@@ -301,6 +387,10 @@ export default function App() {
         checkMonitor={(monitor) => void checkMonitor(monitor)}
         setHistoryMonitor={setHistoryMonitor}
         exportCsv={exportCsv}
+        onAccountCreate={createAccount}
+        onAccountUpdate={updateAccount}
+        onAccountDelete={deleteAccount}
+        onMonitorAssignmentsChange={changeMonitorAssignments}
       />
     </AppShell>
   );

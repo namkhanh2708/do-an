@@ -10,6 +10,7 @@ import mongoose from 'mongoose';
 import nodemailer from 'nodemailer';
 import { diagnoseCheck } from './diagnosis.js';
 import { createAuthRouter } from './auth.js';
+import { canViewMonitor, isAdmin, visibleMonitors } from './authorization.js';
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
@@ -29,6 +30,7 @@ const monitorSchema = new mongoose.Schema({
   intervalSeconds: { type: Number, default: 60 },
   slowThresholdMs: { type: Number, default: 1000 },
   notificationEmail: { type: String, default: '' },
+  ownerId: { type: String, default: '' },
   status: { type: String, enum: ['UP', 'DOWN', 'SLOW', 'UNKNOWN'], default: 'UNKNOWN' },
   lastCheckedAt: { type: Date, default: null },
   lastResponseTimeMs: { type: Number, default: null },
@@ -60,6 +62,16 @@ const incidentSchema = new mongoose.Schema({
 const Monitor = mongoose.model('Monitor', monitorSchema);
 const Check = mongoose.model('Check', checkSchema);
 const Incident = mongoose.model('Incident', incidentSchema);
+
+async function releaseUserMonitors(userId) {
+  if (storageMode === 'mongodb') {
+    await Monitor.updateMany({ ownerId: userId }, { $set: { ownerId: '' } });
+    return;
+  }
+  for (const monitor of memory.monitors) {
+    if (monitor.ownerId === userId) monitor.ownerId = '';
+  }
+}
 
 const serialize = (value) => {
   const record = value?.toObject ? value.toObject() : value;
@@ -187,17 +199,19 @@ async function saveCheck(data) {
   return check;
 }
 
-async function checksFor({ monitorId, since, limit = 1000 } = {}) {
+async function checksFor({ monitorId, monitorIds, since, limit = 1000 } = {}) {
   if (storageMode === 'mongodb') {
     const filter = {};
     if (monitorId) filter.monitorId = monitorId;
+    else if (monitorIds) filter.monitorId = { $in: monitorIds };
     if (since) filter.checkedAt = { $gte: since };
     const query = Check.find(filter).sort({ checkedAt: -1 });
     if (limit) query.limit(limit);
     return (await query).map(serialize);
   }
   const results = memory.checks
-    .filter((item) => (!monitorId || item.monitorId === monitorId) && (!since || item.checkedAt >= since))
+    .filter((item) => (!monitorId || item.monitorId === monitorId) &&
+      (!monitorIds || monitorIds.includes(item.monitorId)) && (!since || item.checkedAt >= since))
     .sort((a, b) => b.checkedAt - a.checkedAt);
   return limit ? results.slice(0, limit) : results;
 }
@@ -246,15 +260,17 @@ async function resolveIncident(incident) {
   Object.assign(incident, changes);
 }
 
-async function incidentsFor({ monitorId, since, limit = 200 } = {}) {
+async function incidentsFor({ monitorId, monitorIds, since, limit = 200 } = {}) {
   if (storageMode === 'mongodb') {
     const filter = {};
     if (monitorId) filter.monitorId = monitorId;
+    else if (monitorIds) filter.monitorId = { $in: monitorIds };
     if (since) filter.$or = [{ startedAt: { $gte: since } }, { status: 'OPEN' }];
     return (await Incident.find(filter).sort({ startedAt: -1 }).limit(limit)).map(serialize);
   }
   return memory.incidents
     .filter((item) => (!monitorId || item.monitorId === monitorId) &&
+      (!monitorIds || monitorIds.includes(item.monitorId)) &&
       (!since || item.startedAt >= since || item.status === 'OPEN'))
     .sort((a, b) => b.startedAt - a.startedAt)
     .slice(0, limit);
@@ -266,6 +282,7 @@ function validateMonitorInput(body, current = {}) {
   const notificationEmail = typeof body.notificationEmail === 'string'
     ? body.notificationEmail.trim()
     : current.notificationEmail ?? '';
+  const ownerId = typeof body.ownerId === 'string' ? body.ownerId.trim() : current.ownerId ?? '';
   const intervalSeconds = body.intervalSeconds ?? current.intervalSeconds ?? 60;
   const slowThresholdMs = body.slowThresholdMs ?? current.slowThresholdMs ?? 1000;
   const enabled = body.enabled ?? current.enabled ?? true;
@@ -279,6 +296,9 @@ function validateMonitorInput(body, current = {}) {
   if (typeof enabled !== 'boolean') throw Object.assign(new Error('Trạng thái giám sát không hợp lệ.'), { status: 400 });
   if (notificationEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(notificationEmail)) {
     throw Object.assign(new Error('Địa chỉ email thông báo không hợp lệ.'), { status: 400 });
+  }
+  if (ownerId && !mongoose.isValidObjectId(ownerId)) {
+    throw Object.assign(new Error('Tài khoản được gán không hợp lệ.'), { status: 400 });
   }
   let parsedUrl;
   try {
@@ -295,6 +315,7 @@ function validateMonitorInput(body, current = {}) {
     intervalSeconds: Number(intervalSeconds),
     slowThresholdMs: Number(slowThresholdMs),
     notificationEmail,
+    ownerId,
     enabled,
   };
 }
@@ -473,7 +494,11 @@ function rangeStart(value) {
 
 app.disable('x-powered-by');
 app.use(express.json({ limit: '20kb' }));
-app.use('/api/auth', createAuthRouter({ isMongoConnected: () => storageMode === 'mongodb' }));
+const auth = createAuthRouter({
+  isMongoConnected: () => storageMode === 'mongodb',
+  onUserDeleted: releaseUserMonitors,
+});
+app.use('/api/auth', auth.router);
 
 app.get('/api/health', (_req, res) => {
   res.json({
@@ -483,17 +508,23 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
-app.get('/api/monitors', async (_req, res, next) => {
+app.use('/api', auth.authenticate);
+
+app.get('/api/monitors', async (req, res, next) => {
   try {
-    res.json(await listMonitors());
+    const monitors = await listMonitors();
+    res.json(visibleMonitors(req.user, monitors));
   } catch (error) {
     next(error);
   }
 });
 
-app.post('/api/monitors', async (req, res, next) => {
+app.post('/api/monitors', auth.requireAdmin, async (req, res, next) => {
   try {
     const data = validateMonitorInput(req.body);
+    if (data.ownerId && !await auth.isAssignableOwner(data.ownerId)) {
+      return res.status(400).json({ error: 'Chỉ có thể gán website cho tài khoản User đang hoạt động.' });
+    }
     await validatePublicUrl(data.url);
     const monitor = await createMonitor(data);
     res.status(201).json(monitor);
@@ -506,11 +537,14 @@ app.post('/api/monitors', async (req, res, next) => {
   }
 });
 
-app.patch('/api/monitors/:id', async (req, res, next) => {
+app.patch('/api/monitors/:id', auth.requireAdmin, async (req, res, next) => {
   try {
     const current = await getMonitor(req.params.id);
     if (!current) return res.status(404).json({ error: 'Không tìm thấy website.' });
     const changes = validateMonitorInput(req.body, current);
+    if (changes.ownerId && !await auth.isAssignableOwner(changes.ownerId)) {
+      return res.status(400).json({ error: 'Chỉ có thể gán website cho tài khoản User đang hoạt động.' });
+    }
     if (changes.url !== current.url) await validatePublicUrl(changes.url);
     const monitor = await updateMonitor(req.params.id, changes);
     res.json(monitor);
@@ -525,7 +559,7 @@ app.patch('/api/monitors/:id', async (req, res, next) => {
   }
 });
 
-app.delete('/api/monitors/:id', async (req, res, next) => {
+app.delete('/api/monitors/:id', auth.requireAdmin, async (req, res, next) => {
   try {
     if (!await deleteMonitor(req.params.id)) return res.status(404).json({ error: 'Không tìm thấy website.' });
     res.status(204).end();
@@ -534,7 +568,7 @@ app.delete('/api/monitors/:id', async (req, res, next) => {
   }
 });
 
-app.post('/api/monitors/:id/check', async (req, res, next) => {
+app.post('/api/monitors/:id/check', auth.requireAdmin, async (req, res, next) => {
   try {
     res.json(await performCheck(req.params.id));
   } catch (error) {
@@ -544,7 +578,10 @@ app.post('/api/monitors/:id/check', async (req, res, next) => {
 
 app.get('/api/monitors/:id/checks', async (req, res, next) => {
   try {
-    if (!await getMonitor(req.params.id)) return res.status(404).json({ error: 'Không tìm thấy website.' });
+    const monitor = await getMonitor(req.params.id);
+    if (!canViewMonitor(req.user, monitor)) {
+      return res.status(404).json({ error: 'Không tìm thấy website.' });
+    }
     res.json(await checksFor({ monitorId: req.params.id, since: rangeStart(req.query.range), limit: 1000 }));
   } catch (error) {
     next(error);
@@ -553,7 +590,17 @@ app.get('/api/monitors/:id/checks', async (req, res, next) => {
 
 app.get('/api/incidents', async (req, res, next) => {
   try {
-    res.json(await incidentsFor({ monitorId: req.query.monitorId, since: rangeStart(req.query.range) }));
+    const monitorId = req.query.monitorId || undefined;
+    if (monitorId && !isAdmin(req.user)) {
+      const monitor = await getMonitor(monitorId);
+      if (!canViewMonitor(req.user, monitor)) {
+        return res.status(404).json({ error: 'Không tìm thấy website.' });
+      }
+    }
+    const monitorIds = isAdmin(req.user)
+      ? undefined
+      : (await listMonitors()).filter((monitor) => monitor.ownerId === req.user.id).map((monitor) => monitor.id);
+    res.json(await incidentsFor({ monitorId, monitorIds, since: rangeStart(req.query.range) }));
   } catch (error) {
     next(error);
   }
@@ -563,10 +610,15 @@ app.get('/api/reports', async (req, res, next) => {
   try {
     const since = rangeStart(req.query.range);
     const monitorId = req.query.monitorId || undefined;
+    const userMonitors = visibleMonitors(req.user, await listMonitors());
+    if (monitorId && !userMonitors.some((monitor) => monitor.id === monitorId)) {
+      return res.status(404).json({ error: 'Không tìm thấy website.' });
+    }
+    const monitorIds = isAdmin(req.user) ? undefined : userMonitors.map((monitor) => monitor.id);
     const [monitors, checks, incidents] = await Promise.all([
-      listMonitors(),
-      checksFor({ monitorId, since, limit: null }),
-      incidentsFor({ monitorId, since, limit: 1000 }),
+      Promise.resolve(userMonitors),
+      checksFor({ monitorId, monitorIds, since, limit: null }),
+      incidentsFor({ monitorId, monitorIds, since, limit: 1000 }),
     ]);
     const selectedMonitors = monitors.filter((monitor) => !monitorId || monitor.id === monitorId);
     const buckets = new Map();
@@ -670,6 +722,8 @@ async function start() {
     console.warn('[storage] Chưa cấu hình MONGODB_URI; đang chạy chế độ RAM, dữ liệu sẽ mất khi khởi động lại.');
   }
 
+  if (storageMode === 'mongodb') await auth.bootstrapAdmin();
+
   if (process.env.SMTP_HOST) {
     mailer = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
@@ -688,7 +742,8 @@ async function start() {
   void runScheduledChecks().catch((error) => console.error('[monitor] Kiểm tra khởi động thất bại:', error));
 }
 
-start().catch((error) => {
+start().catch(async (error) => {
   console.error('[server] Không thể khởi động máy chủ:', error);
+  await mongoose.disconnect();
   process.exitCode = 1;
 });
