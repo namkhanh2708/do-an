@@ -1,5 +1,6 @@
 import type { MonitorStatus } from '../types/monitor';
 
+// Chuẩn hóa số liệu và trạng thái để hiển thị nhất quán trong giao diện.
 export function formatMs(value: number | null | undefined) {
   return value === null || value === undefined ? '—' : `${Math.round(value)} ms`;
 }

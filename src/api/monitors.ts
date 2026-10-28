@@ -1,6 +1,7 @@
 import type { HealthCheck, Monitor, MonitorInput } from '../types/monitor';
 import { request } from './client';
 
+// API liệt kê, cấu hình, kiểm tra và lấy lịch sử website.
 export const monitorsApi = {
   monitors: () => request<Monitor[]>('/api/monitors'),
   createMonitor: (data: MonitorInput) =>

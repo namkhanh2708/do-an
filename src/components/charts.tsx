@@ -3,6 +3,7 @@ import type { MonitorStatus, Report } from '../types/monitor';
 import type { TimeRange } from '../types/app';
 import { formatPercent, statusLabel } from '../utils/format';
 
+// Nhãn trạng thái dùng chung trong bảng và báo cáo.
 export function StatusBadge({ status }: { status: MonitorStatus }) {
   const Icon = status === 'UP' ? CheckCircle2 : status === 'DOWN' ? WifiOff : status === 'SLOW' ? Zap : Clock3;
   return (
@@ -13,6 +14,7 @@ export function StatusBadge({ status }: { status: MonitorStatus }) {
   );
 }
 
+// Biểu đồ thời gian phản hồi theo khoảng thời gian được chọn.
 export function PerformanceChart({ data, range }: { data: Report['series']; range: TimeRange }) {
   const values = data
     .filter((point) => point.averageResponseTimeMs !== null)
@@ -77,6 +79,7 @@ export function PerformanceChart({ data, range }: { data: Report['series']; rang
   );
 }
 
+// Biểu đồ tỷ lệ uptime và phân bố trạng thái kiểm tra.
 export function UptimeChart({ percent, up, slow, down }: { percent: number | null; up: number; slow: number; down: number }) {
   const value = percent ?? 0;
   const circumference = 2 * Math.PI * 66;

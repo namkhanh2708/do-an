@@ -15,6 +15,7 @@ import {
 import type { Diagnosis, Incident } from '../types/monitor';
 import { formatDate, formatDuration } from '../utils/format';
 
+// Thẻ chỉ số dùng ở Dashboard và Báo cáo.
 export function MetricCard({ icon, label, value, note, color }: { icon: ReactNode; label: string; value: string; note: string; color: string }) {
   return (
     <article className={tw('metric-card')}>
@@ -25,10 +26,12 @@ export function MetricCard({ icon, label, value, note, color }: { icon: ReactNod
   );
 }
 
+// Tiêu đề chuẩn hóa cho các khu vực nội dung.
 export function PanelHeading({ title, subtitle, action }: { title: string; subtitle: string; action?: ReactNode }) {
   return <div className={tw("panel-heading panel-heading-bordered")}><div><h2>{title}</h2><p>{subtitle}</p></div>{action}</div>;
 }
 
+// Hiển thị bằng chứng, nguyên nhân và hướng xử lý sự cố.
 export function DiagnosisPanel({
   diagnosis,
   compact = false,
@@ -103,6 +106,7 @@ export function DiagnosisPanel({
   );
 }
 
+// Tóm tắt một sự cố đang mở hoặc đã được khôi phục.
 export function IncidentRow({ incident, detailed = false }: { incident: Incident; detailed?: boolean }) {
   const isOpen = incident.status === 'OPEN';
   const duration = incident.durationMs != null
@@ -169,10 +173,12 @@ export function IncidentRow({ incident, detailed = false }: { incident: Incident
   );
 }
 
+// Trạng thái chờ dữ liệu của các bảng.
 export function LoadingRow() {
   return <div className={tw("loading-row")}><LoaderCircle size={18} className={tw("spin")} /> Đang tải dữ liệu…</div>;
 }
 
+// Biểu tượng trợ giúp về trạng thái hệ thống.
 export function CircleHelpIcon() {
   return <Server size={16} />;
 }

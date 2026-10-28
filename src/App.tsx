@@ -16,12 +16,13 @@ import type { ApiHealth, Incident, Monitor, MonitorInput, Report } from './types
 import { formatMs, statusLabel } from './utils/format';
 import { emptyReport } from './utils/report';
 
-const sessionStorageKey = 'uptime-watch-session';
+const legacySessionStorageKey = 'uptime-watch-session';
+const legacyAccountsStorageKey = 'uptime-watch-accounts';
 
+// Điều phối phiên đăng nhập, dữ liệu và các thao tác chính của dashboard.
 export default function App() {
-  const [authenticatedUser, setAuthenticatedUser] = useState(
-    () => window.localStorage.getItem(sessionStorageKey) ?? '',
-  );
+  // Khởi tạo trạng thái phiên đăng nhập trong bộ nhớ ứng dụng.
+  const [authenticatedUser, setAuthenticatedUser] = useState('');
   const [page, setPage] = useState<Page>('dashboard');
   const [range, setRange] = useState<TimeRange>('7d');
   const [monitorFilter, setMonitorFilter] = useState('');
@@ -45,6 +46,7 @@ export default function App() {
   const [deleteError, setDeleteError] = useState('');
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
+  // Tải và đồng bộ dữ liệu sức khỏe, website, báo cáo và sự cố.
   const refresh = useCallback(async (quiet = false) => {
     if (!authenticatedUser) return;
     if (!quiet) setRefreshing(true);
@@ -68,6 +70,12 @@ export default function App() {
     }
   }, [authenticatedUser, range, monitorFilter]);
 
+  // Xóa phiên giả và tài khoản lưu dạng văn bản thuần từ phiên bản demo cũ.
+  useEffect(() => {
+    window.localStorage.removeItem(legacySessionStorageKey);
+    window.localStorage.removeItem(legacyAccountsStorageKey);
+  }, []);
+
   useEffect(() => { if (authenticatedUser) void refresh(); }, [authenticatedUser, refresh]);
   useEffect(() => {
     if (!authenticatedUser) return;
@@ -88,6 +96,7 @@ export default function App() {
     };
   }, [monitorFilter, report]);
 
+  // Thêm website mới hoặc lưu cấu hình website hiện có.
   async function saveMonitor(input: MonitorInput) {
     setSaving(true);
     setActionError('');
@@ -108,6 +117,7 @@ export default function App() {
     }
   }
 
+  // Bật hoặc tạm dừng giám sát website.
   async function toggleMonitor(monitor: Monitor) {
     try {
       await api.updateMonitor(monitor.id, {
@@ -125,6 +135,7 @@ export default function App() {
     }
   }
 
+  // Xác nhận xóa website và làm mới dữ liệu liên quan.
   async function confirmDeleteMonitor() {
     if (!deleteMonitorTarget) return;
     const monitor = deleteMonitorTarget;
@@ -143,16 +154,17 @@ export default function App() {
     }
   }
 
+  // Lưu người dùng đã xác thực vào phiên trình duyệt.
   function handleAuthenticated(username: string) {
-    window.localStorage.setItem(sessionStorageKey, username);
     setAuthenticatedUser(username);
   }
 
+  // Kết thúc phiên đăng nhập hiện tại.
   function handleLogout() {
-    window.localStorage.removeItem(sessionStorageKey);
     setAuthenticatedUser('');
   }
 
+  // Yêu cầu kiểm tra website ngay lập tức.
   async function checkMonitor(monitor: Monitor) {
     setCheckingId(monitor.id);
     setActionError('');
@@ -167,6 +179,7 @@ export default function App() {
     }
   }
 
+  // Mở form thêm website hoặc chỉnh sửa cấu hình.
   function openCreateDialog() {
     setActionError('');
     setEditingMonitor(null);
@@ -179,6 +192,7 @@ export default function App() {
     setDialogOpen(true);
   }
 
+  // Xuất số liệu báo cáo đang lọc thành tệp CSV.
   function exportCsv() {
     const csvCell = (value: string) => {
       const safeValue = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;

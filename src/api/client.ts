@@ -1,3 +1,4 @@
+// Gửi yêu cầu JSON và chuyển phản hồi lỗi thành thông báo có thể hiển thị.
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...init,

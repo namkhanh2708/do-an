@@ -4,7 +4,7 @@ Dashboard theo dõi tính sẵn sàng và hiệu suất của website, xây dự
 
 ## Chạy dự án
 
-**Yêu cầu:** Node.js 20.19+ hoặc 22.12+ và npm. MongoDB Community hoặc MongoDB Atlas là tùy chọn khi chạy thử; không có MongoDB, backend vẫn chạy ở chế độ RAM và sẽ thông báo dữ liệu không được lưu sau khi khởi động lại.
+**Yêu cầu:** Node.js 20.19+ hoặc 22.12+ và npm. MongoDB Community hoặc MongoDB Atlas là tùy chọn khi chạy thử; không có MongoDB, backend vẫn chạy ở chế độ RAM cho dữ liệu giám sát, nhưng chức năng đăng ký/đăng nhập không khả dụng.
 
 1. Cài thư viện:
 
@@ -50,6 +50,7 @@ Vite và Express lắng nghe trên các giao diện mạng của máy chạy ứ
 - **Phân tích sự cố:** chẩn đoán theo quy tắc từ HTTP status, timeout, response time và tối đa 5 lượt kiểm tra gần nhất; hiển thị bằng chứng, nguyên nhân có thể và hướng xử lý trong nhật ký sự cố/lịch sử kiểm tra. Nguyên nhân chỉ là giả thuyết, không thay thế log hoặc số liệu máy chủ.
 - **Thông báo email:** gửi email một lần khi DOWN (kèm bằng chứng và khuyến nghị chẩn đoán) và một lần khi phục hồi. Có thể cấu hình email riêng trên monitor hoặc dùng `ALERT_EMAIL` mặc định.
 - **Báo cáo:** lọc theo website và 24 giờ/7 ngày/30 ngày, thống kê từng website và xuất CSV.
+- **Tài khoản:** đăng ký và đăng nhập qua API; tài khoản lưu trong MongoDB và mật khẩu được băm bằng scrypt. Cần cấu hình `MONGODB_URI` để sử dụng.
 - **An toàn URL:** chỉ nhận HTTP/HTTPS công khai; từ chối localhost/địa chỉ nội bộ và kiểm tra lại địa chỉ đích khi theo dõi/chuyển hướng.
 - **Tự làm mới:** dashboard tải lại dữ liệu định kỳ mỗi 30 giây; API health báo trạng thái MongoDB và SMTP.
 

@@ -9,6 +9,7 @@ import express from 'express';
 import mongoose from 'mongoose';
 import nodemailer from 'nodemailer';
 import { diagnoseCheck } from './diagnosis.js';
+import { createAuthRouter } from './auth.js';
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
@@ -18,6 +19,8 @@ let storageMode = 'memory';
 let mailer;
 const activeChecks = new Map();
 const deletingMonitors = new Set();
+// Dem so lan SLOW lien tiep theo tung monitor (reset ve 0 khi site UP hoac DOWN)
+const slowConsecutiveCounts = new Map();
 
 const monitorSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true, maxlength: 80 },
@@ -296,7 +299,13 @@ function validateMonitorInput(body, current = {}) {
   };
 }
 
-async function notifyTransition(monitor, status, checkedAt, diagnosis = null) {
+/**
+ * Gửi email cảnh báo.
+ * type: 'down'       - Website xuống lần này (gửi mỗi lần DOWN)
+ *       'slow'       - SLOW liên tiếp đủ ngưỡng (count = số lần đầy)
+ *       'recovered'  - Đã khôi phục từ DOWN
+ */
+async function sendAlertEmail(monitor, type, checkedAt, { diagnosis = null, responseTimeMs = null, slowCount = 0 } = {}) {
   const recipient = monitor.notificationEmail || process.env.ALERT_EMAIL;
   if (!recipient) {
     console.warn(`[alert] Chưa cấu hình email nhận cảnh báo cho "${monitor.name}".`);
@@ -306,31 +315,53 @@ async function notifyTransition(monitor, status, checkedAt, diagnosis = null) {
     console.warn(`[alert] Chưa cấu hình SMTP; không gửi được email cho "${monitor.name}".`);
     return;
   }
-  const recovered = status !== 'DOWN';
-  const subject = recovered
-    ? `[Đã khôi phục] ${monitor.name} đang hoạt động`
-    : `[Sự cố] ${monitor.name} đang DOWN`;
-  const text = [
-    `Website: ${monitor.name}`,
-    `URL: ${monitor.url}`,
-    `Trạng thái: ${status}`,
-    `Thời điểm: ${new Date(checkedAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`,
-    ...(diagnosis ? [
-      '',
-      'Dấu hiệu đã ghi nhận:',
-      ...diagnosis.evidence.map((item) => `- ${item}`),
-      '',
-      'Nguyên nhân có thể (chưa xác nhận):',
-      ...diagnosis.possibleCauses.map((item) => `- ${item}`),
-      '',
-      'Hướng kiểm tra/khắc phục:',
-      ...diagnosis.recommendedActions.map((item, index) => `${index + 1}. ${item}`),
-      '',
-      diagnosis.confidenceNote,
-    ] : []),
-  ].join('\n');
+
+  let subject, headerLines;
+  if (type === 'down') {
+    subject = `[Sự cố] ${monitor.name} đang DOWN`;
+    headerLines = [
+      `Website: ${monitor.name}`,
+      `URL: ${monitor.url}`,
+      `Trạng thái: DOWN`,
+      `Thời điểm: ${new Date(checkedAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`,
+    ];
+  } else if (type === 'slow') {
+    subject = `[Cảnh báo chậm] ${monitor.name} phản hồi chậm ${slowCount} lần liên tiếp`;
+    headerLines = [
+      `Website: ${monitor.name}`,
+      `URL: ${monitor.url}`,
+      `Trạng thái: SLOW (chậm) - ${slowCount} lần liên tiếp`,
+      `Thời điểm: ${new Date(checkedAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`,
+      ...(responseTimeMs !== null ? [`Thời gian phản hồi: ${responseTimeMs} ms (ngưỡng: ${monitor.slowThresholdMs} ms)`] : []),
+    ];
+  } else {
+    subject = `[Đã khôi phục] ${monitor.name} đang hoạt động`;
+    headerLines = [
+      `Website: ${monitor.name}`,
+      `URL: ${monitor.url}`,
+      `Trạng thái: ĐÃ KHÔI PHỤC`,
+      `Thời điểm: ${new Date(checkedAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`,
+    ];
+  }
+
+  const diagLines = diagnosis ? [
+    '',
+    'Dấu hiệu đã ghi nhận:',
+    ...diagnosis.evidence.map((item) => `- ${item}`),
+    '',
+    'Nguyên nhân có thể :',
+    ...diagnosis.possibleCauses.map((item) => `- ${item}`),
+    '',
+    'Hướng kiểm tra/khắc phục:',
+    ...diagnosis.recommendedActions.map((item, index) => `${index + 1}. ${item}`),
+    '',
+    diagnosis.confidenceNote,
+  ] : [];
+
+  const text = [...headerLines, ...diagLines].join('\n');
   try {
     await mailer.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: recipient, subject, text });
+    console.info(`[alert] Đã gửi email (${type}) cho "${monitor.name}" -> ${recipient}`);
   } catch (error) {
     console.error(`[alert] Gửi email cho "${monitor.name}" thất bại:`, error);
   }
@@ -389,18 +420,41 @@ async function performCheck(id) {
     const checkData = { monitorId: id, status, responseTimeMs, httpStatus, error: errorMessage, checkedAt };
     const diagnosis = diagnoseCheck(checkData, [checkData, ...recentChecks], monitor.slowThresholdMs);
     const check = await saveCheck({ ...checkData, diagnosis });
-    if (status === 'DOWN' && previousStatus !== 'DOWN') {
+
+    // --- Xữ lý cảnh báo & quản lý sự cố ---
+    if (status === 'DOWN') {
+      // Reset bộ đếm SLOW khi DOWN
+      slowConsecutiveCounts.set(id, 0);
+      // Mở hoặc cập nhật sự cố
       let incident = await openIncidentFor(id);
       if (incident) await updateIncidentDiagnosis(incident, diagnosis);
       else incident = await startIncident(updated, diagnosis);
-      await notifyTransition(updated, status, checkedAt, diagnosis);
-    } else if (status === 'DOWN') {
-      const incident = await openIncidentFor(id);
-      if (incident) await updateIncidentDiagnosis(incident, diagnosis);
-    } else if (previousStatus === 'DOWN' && status !== 'DOWN') {
-      const incident = await openIncidentFor(id);
-      if (incident) await resolveIncident(incident);
-      await notifyTransition(updated, status, checkedAt);
+      // Gửi email ngay lập tức mỗi lần DOWN
+      await sendAlertEmail(updated, 'down', checkedAt, { diagnosis });
+    } else if (status === 'SLOW') {
+      // Đếm số lần SLOW liên tiếp
+      const prev = slowConsecutiveCounts.get(id) ?? 0;
+      const next = prev + 1;
+      slowConsecutiveCounts.set(id, next);
+      if (next >= 3 && next % 3 === 0) {
+        // Gửi cảnh báo khi SLOW đủ 3 lần, rồi mỗi 3 lần tiếp theo
+        await sendAlertEmail(updated, 'slow', checkedAt, { diagnosis, responseTimeMs, slowCount: next });
+      }
+      // Nếu trước đó đang DOWN, đóng sự cố và gửi email khôi phục
+      if (previousStatus === 'DOWN') {
+        const incident = await openIncidentFor(id);
+        if (incident) await resolveIncident(incident);
+        await sendAlertEmail(updated, 'recovered', checkedAt);
+      }
+    } else {
+      // UP: reset bộ đếm SLOW
+      slowConsecutiveCounts.set(id, 0);
+      // Nếu trước đó đang DOWN, đóng sự cố và gửi email khôi phục
+      if (previousStatus === 'DOWN') {
+        const incident = await openIncidentFor(id);
+        if (incident) await resolveIncident(incident);
+        await sendAlertEmail(updated, 'recovered', checkedAt);
+      }
     }
     return { monitor: updated, check };
   })();
@@ -419,6 +473,7 @@ function rangeStart(value) {
 
 app.disable('x-powered-by');
 app.use(express.json({ limit: '20kb' }));
+app.use('/api/auth', createAuthRouter({ isMongoConnected: () => storageMode === 'mongodb' }));
 
 app.get('/api/health', (_req, res) => {
   res.json({

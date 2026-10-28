@@ -1,6 +1,7 @@
 import type { Report } from '../types/monitor';
 import type { TimeRange } from '../types/app';
 
+// Dữ liệu báo cáo khởi tạo khi chưa tải được phản hồi từ API.
 export const emptyReport: Report = {
   summary: {
     totalMonitors: 0,
@@ -17,6 +18,7 @@ export const emptyReport: Report = {
   monitors: [],
 };
 
+// Nhãn tiếng Việt cho các khoảng thời gian của báo cáo.
 export const rangeLabels: Record<TimeRange, string> = {
   '1d': '24 giờ qua',
   '7d': '7 ngày qua',

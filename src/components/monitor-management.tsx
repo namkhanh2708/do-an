@@ -8,6 +8,7 @@ import { rangeLabels } from '../utils/report';
 import { StatusBadge } from './charts';
 import { DiagnosisPanel } from './dashboard-widgets';
 
+// Tạo mới hoặc chỉnh sửa cấu hình giám sát website.
 export function MonitorDialog({
   monitor,
   saving,
@@ -88,6 +89,7 @@ export function MonitorDialog({
   );
 }
 
+// Hiển thị lịch sử kiểm tra và chẩn đoán của website.
 export function HistoryDialog({
   monitor,
   range,
@@ -149,6 +151,7 @@ export function HistoryDialog({
   );
 }
 
+// Xác nhận trước khi xóa website và dữ liệu liên quan.
 export function DeleteMonitorDialog({
   monitor,
   deleting,
@@ -183,6 +186,7 @@ export function DeleteMonitorDialog({
   );
 }
 
+// Bảng website với tìm kiếm và các thao tác quản lý.
 export function MonitorTable({
   monitors,
   reportRows,
@@ -313,6 +317,7 @@ const tailwindClasses: Record<string, string> = {
   'compact-empty': 'min-h-[170px]',
   'loading-row': 'flex min-h-[150px] items-center justify-center gap-[10px] text-[12px] text-[#a0b0c3]',
   'modal-backdrop': 'fixed inset-0 z-50 grid place-items-center bg-[#080d16b8] p-5 backdrop-blur-[4px]',
+  dialog: 'w-full max-w-[650px] max-h-[90vh] overflow-y-auto rounded-xl border border-[#344257] bg-[#1c293a] p-6 text-[#e6edf8] shadow-[0_24px_80px_#060b1480] max-[640px]:p-4',
   'history-dialog': 'max-w-[890px]',
   'delete-dialog': 'w-full max-w-[450px] rounded-xl border border-[#bfdbfe] bg-[#eaf3ff] p-6 text-center shadow-[0_24px_80px_#060b1480] [&_h2]:mb-2 [&_h2]:text-[18px] [&_h2]:text-[#172554] [&_p]:mb-5 [&_p]:text-[12px] [&_p]:leading-[1.7] [&_p]:text-[#334155] [&_p_strong]:text-[#172554]',
   'delete-warning-icon': 'mx-auto mb-4 grid size-11 place-items-center rounded-full border border-[#74424a] bg-[#412a33] text-[#ff9299]',

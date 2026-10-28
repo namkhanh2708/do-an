@@ -103,6 +103,7 @@ export default function AppShell({
 
   return (
     <div className={tw('app-shell')}>
+      {/* Điều hướng chính, trạng thái hệ thống và tài khoản hiện tại. */}
       <aside className={tw(`sidebar ${mobileNavOpen ? 'sidebar-open' : ''}`)}>
         <a className={tw('brand')} href="#" onClick={(event) => { event.preventDefault(); onPageChange('dashboard'); }}>
           <span className={tw('brand-mark')}><HeartPulse size={22} /></span>
@@ -140,7 +141,7 @@ export default function AppShell({
               <LogOut size={15} />
             </button>
           </div>
-          <span className={tw('sidebar-version')}>Version 1.1.0</span>
+          <span className={tw('sidebar-version')}>Version 1.3.0</span>
         </div>
       </aside>
       {mobileNavOpen && (
@@ -152,6 +153,7 @@ export default function AppShell({
       )}
 
       <main className={tw('main-area')}>
+        {/* Thanh công cụ, bộ lọc thời gian và tiêu đề màn hình. */}
         <header className={tw('topbar')}>
           <button className={tw('icon-button mobile-menu')} aria-label="Mở menu" onClick={() => onMobileNavChange(true)}>
             <Menu size={19} />
@@ -173,6 +175,7 @@ export default function AppShell({
         </header>
 
         <div className={tw('page-content')}>
+          {/* Thông báo hệ thống, lỗi thao tác và nội dung của màn hình đang chọn. */}
           {apiError && (
             <div className={tw('connection-banner')}>
               <WifiOff size={17} />
