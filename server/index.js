@@ -9,8 +9,13 @@ import express from 'express';
 import mongoose from 'mongoose';
 import nodemailer from 'nodemailer';
 import { diagnoseCheck } from './diagnosis.js';
+import { analyzeIncidentWithAI, isAiDiagnosisEnabled } from './ai-diagnosis.js';
 import { createAuthRouter } from './auth.js';
 import { canViewMonitor, isAdmin, visibleMonitors } from './authorization.js';
+import { getAcceptedRecipients, getPendingRecipients } from './email-delivery.js';
+import { assertMonitorRedirectAllowed, isAllowedLocalIPv4, isLocalMonitorUrl } from './monitor-url-policy.js';
+import { isMonitorAlertEnabled } from './notification-policy.js';
+import { buildSmtpTransportOptions } from './smtp-config.js';
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
@@ -20,6 +25,7 @@ let storageMode = 'memory';
 let mailer;
 const activeChecks = new Map();
 const deletingMonitors = new Set();
+const aiDiagnosisAttemptedMonitors = new Set();
 // Dem so lan SLOW lien tiep theo tung monitor (reset ve 0 khi site UP hoac DOWN)
 const slowConsecutiveCounts = new Map();
 
@@ -29,7 +35,6 @@ const monitorSchema = new mongoose.Schema({
   enabled: { type: Boolean, default: true },
   intervalSeconds: { type: Number, default: 60 },
   slowThresholdMs: { type: Number, default: 1000 },
-  notificationEmail: { type: String, default: '' },
   ownerId: { type: String, default: '' },
   status: { type: String, enum: ['UP', 'DOWN', 'SLOW', 'UNKNOWN'], default: 'UNKNOWN' },
   lastCheckedAt: { type: Date, default: null },
@@ -99,7 +104,7 @@ function isPrivateAddress(address) {
     normalized.startsWith('ff') || normalized.startsWith('::ffff:');
 }
 
-async function validatePublicUrl(value) {
+async function validateMonitorUrl(value) {
   let url;
   try {
     url = new URL(value);
@@ -112,14 +117,18 @@ async function validatePublicUrl(value) {
   }
 
   const hostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
-  if (!hostname || hostname === 'localhost' || hostname.endsWith('.localhost') ||
-      hostname.endsWith('.local') || hostname.endsWith('.internal')) {
-    throw new Error('Không thể giám sát địa chỉ nội bộ hoặc localhost.');
+  if (!hostname) {
+    throw new Error('URL không có tên máy chủ hợp lệ.');
   }
 
-  const addresses = isIP(hostname)
-    ? [{ address: hostname }]
-    : await dns.lookup(hostname, { all: true, verbatim: true });
+  if (hostname === 'localhost' || (isIP(hostname) === 4 && isAllowedLocalIPv4(hostname))) {
+    return url;
+  }
+  if (hostname.endsWith('.localhost') || hostname.endsWith('.local') || hostname.endsWith('.internal')) {
+    throw new Error('Địa chỉ local chỉ hỗ trợ localhost hoặc IP IPv4 riêng trực tiếp.');
+  }
+
+  const addresses = isIP(hostname) ? [{ address: hostname }] : await dns.lookup(hostname, { all: true, verbatim: true });
   if (!addresses.length || addresses.some(({ address }) => isPrivateAddress(address))) {
     throw new Error('Tên miền phải phân giải đến địa chỉ IP công khai.');
   }
@@ -169,6 +178,16 @@ async function updateMonitor(id, changes) {
   return monitor;
 }
 
+async function renameIncidentMonitor(monitorId, name) {
+  if (storageMode === 'mongodb') {
+    await Incident.updateMany({ monitorId }, { $set: { monitorName: name } });
+    return;
+  }
+  for (const incident of memory.incidents) {
+    if (incident.monitorId === monitorId) incident.monitorName = name;
+  }
+}
+
 async function deleteMonitor(id) {
   if (deletingMonitors.has(id)) return false;
   deletingMonitors.add(id);
@@ -189,6 +208,7 @@ async function deleteMonitor(id) {
     return memory.monitors.length !== existing;
   } finally {
     deletingMonitors.delete(id);
+    aiDiagnosisAttemptedMonitors.delete(id);
   }
 }
 
@@ -197,6 +217,16 @@ async function saveCheck(data) {
   const check = { ...data, id: crypto.randomUUID() };
   memory.checks.push(check);
   return check;
+}
+
+async function updateCheckDiagnosis(check, diagnosis) {
+  if (storageMode === 'mongodb') {
+    await Check.findByIdAndUpdate(check.id, { diagnosis });
+    return;
+  }
+  const savedCheck = memory.checks.find((item) => item.id === check.id);
+  if (!savedCheck) throw new Error('Không tìm thấy lượt kiểm tra cần cập nhật chẩn đoán.');
+  savedCheck.diagnosis = diagnosis;
 }
 
 async function checksFor({ monitorId, monitorIds, since, limit = 1000 } = {}) {
@@ -255,23 +285,33 @@ async function resolveIncident(incident) {
   };
   if (storageMode === 'mongodb') {
     await Incident.findByIdAndUpdate(incident.id, changes);
+    aiDiagnosisAttemptedMonitors.delete(incident.monitorId);
     return;
   }
   Object.assign(incident, changes);
+  aiDiagnosisAttemptedMonitors.delete(incident.monitorId);
 }
 
-async function incidentsFor({ monitorId, monitorIds, since, limit = 200 } = {}) {
+async function resolveOpenIncidentsFor(monitorId) {
+  const openIncidents = storageMode === 'mongodb'
+    ? (await Incident.find({ monitorId, status: 'OPEN' })).map(serialize)
+    : memory.incidents.filter((incident) => incident.monitorId === monitorId && incident.status === 'OPEN');
+  await Promise.all(openIncidents.map(resolveIncident));
+  return openIncidents.length > 0;
+}
+
+async function incidentsFor({ monitorId, monitorIds, since, limit = 1000 } = {}) {
   if (storageMode === 'mongodb') {
     const filter = {};
     if (monitorId) filter.monitorId = monitorId;
     else if (monitorIds) filter.monitorId = { $in: monitorIds };
-    if (since) filter.$or = [{ startedAt: { $gte: since } }, { status: 'OPEN' }];
+    if (since) filter.$or = [{ startedAt: { $gte: since } }, { resolvedAt: { $gte: since } }, { status: 'OPEN' }];
     return (await Incident.find(filter).sort({ startedAt: -1 }).limit(limit)).map(serialize);
   }
   return memory.incidents
     .filter((item) => (!monitorId || item.monitorId === monitorId) &&
       (!monitorIds || monitorIds.includes(item.monitorId)) &&
-      (!since || item.startedAt >= since || item.status === 'OPEN'))
+      (!since || item.startedAt >= since || item.resolvedAt >= since || item.status === 'OPEN'))
     .sort((a, b) => b.startedAt - a.startedAt)
     .slice(0, limit);
 }
@@ -279,9 +319,6 @@ async function incidentsFor({ monitorId, monitorIds, since, limit = 200 } = {}) 
 function validateMonitorInput(body, current = {}) {
   const name = typeof body.name === 'string' ? body.name.trim() : current.name;
   const url = typeof body.url === 'string' ? body.url.trim() : current.url;
-  const notificationEmail = typeof body.notificationEmail === 'string'
-    ? body.notificationEmail.trim()
-    : current.notificationEmail ?? '';
   const ownerId = typeof body.ownerId === 'string' ? body.ownerId.trim() : current.ownerId ?? '';
   const intervalSeconds = body.intervalSeconds ?? current.intervalSeconds ?? 60;
   const slowThresholdMs = body.slowThresholdMs ?? current.slowThresholdMs ?? 1000;
@@ -294,9 +331,6 @@ function validateMonitorInput(body, current = {}) {
     throw Object.assign(new Error('Ngưỡng SLOW phải từ 100 đến 30000 ms.'), { status: 400 });
   }
   if (typeof enabled !== 'boolean') throw Object.assign(new Error('Trạng thái giám sát không hợp lệ.'), { status: 400 });
-  if (notificationEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(notificationEmail)) {
-    throw Object.assign(new Error('Địa chỉ email thông báo không hợp lệ.'), { status: 400 });
-  }
   if (ownerId && !mongoose.isValidObjectId(ownerId)) {
     throw Object.assign(new Error('Tài khoản được gán không hợp lệ.'), { status: 400 });
   }
@@ -314,7 +348,6 @@ function validateMonitorInput(body, current = {}) {
     url: parsedUrl.toString(),
     intervalSeconds: Number(intervalSeconds),
     slowThresholdMs: Number(slowThresholdMs),
-    notificationEmail,
     ownerId,
     enabled,
   };
@@ -326,17 +359,12 @@ function validateMonitorInput(body, current = {}) {
  *       'slow'       - SLOW liên tiếp đủ ngưỡng (count = số lần đầy)
  *       'recovered'  - Đã khôi phục từ DOWN
  */
-async function sendAlertEmail(monitor, type, checkedAt, { diagnosis = null, responseTimeMs = null, slowCount = 0 } = {}) {
-  const recipient = monitor.notificationEmail || process.env.ALERT_EMAIL;
-  if (!recipient) {
-    console.warn(`[alert] Chưa cấu hình email nhận cảnh báo cho "${monitor.name}".`);
-    return;
-  }
-  if (!mailer) {
-    console.warn(`[alert] Chưa cấu hình SMTP; không gửi được email cho "${monitor.name}".`);
-    return;
-  }
-
+async function sendAlertEmail(monitor, type, checkedAt, {
+  diagnosis = null,
+  responseTimeMs = null,
+  slowCount = 0,
+  recipientsOverride = null,
+} = {}) {
   let subject, headerLines;
   if (type === 'down') {
     subject = `[Sự cố] ${monitor.name} đang DOWN`;
@@ -381,10 +409,38 @@ async function sendAlertEmail(monitor, type, checkedAt, { diagnosis = null, resp
 
   const text = [...headerLines, ...diagLines].join('\n');
   try {
-    await mailer.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: recipient, subject, text });
-    console.info(`[alert] Đã gửi email (${type}) cho "${monitor.name}" -> ${recipient}`);
+    const currentMonitor = await getMonitor(monitor.id);
+    if (!isMonitorAlertEnabled(currentMonitor)) {
+      console.info(`[alert] Bỏ qua email (${type}) cho website đang tạm dừng "${monitor.name}".`);
+      return [];
+    }
+    const recipients = getPendingRecipients(recipientsOverride ?? await auth.notificationRecipients(monitor.ownerId));
+    if (!recipients.length) {
+      if (!recipientsOverride) {
+        console.warn(`[alert] Chưa có email cấu hình cho Admin hoặc User được gán website "${monitor.name}".`);
+      }
+      return [];
+    }
+    if (!mailer) {
+      console.warn(`[alert] Chưa cấu hình SMTP; không gửi được email cho "${monitor.name}".`);
+      return [];
+    }
+    const result = await mailer.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: recipients, subject, text });
+    const acceptedRecipients = getAcceptedRecipients(result, recipients);
+    if (acceptedRecipients.length) {
+      console.info(`[alert] SMTP chấp nhận email (${type}) cho "${monitor.name}" (${acceptedRecipients.length}/${recipients.length} người nhận).`);
+    }
+    if (acceptedRecipients.length !== recipients.length) {
+      console.warn(`[alert] SMTP chỉ chấp nhận ${acceptedRecipients.length}/${recipients.length} email (${type}) cho "${monitor.name}".`);
+    }
+    return acceptedRecipients;
   } catch (error) {
-    console.error(`[alert] Gửi email cho "${monitor.name}" thất bại:`, error);
+    console.error(`[alert] Gửi email cho "${monitor.name}" thất bại.`, {
+      code: error.code,
+      command: error.command,
+      responseCode: error.responseCode,
+    });
+    return [];
   }
 }
 
@@ -401,7 +457,8 @@ async function performCheck(id) {
     let responseTimeMs = null;
     let status = 'DOWN';
     try {
-      let target = await validatePublicUrl(monitor.url);
+      let target = await validateMonitorUrl(monitor.url);
+      const initialTarget = target;
       let response;
       for (let redirectCount = 0; redirectCount <= 5; redirectCount += 1) {
         response = await fetch(target, {
@@ -412,7 +469,8 @@ async function performCheck(id) {
         });
         if (response.status < 300 || response.status >= 400 || !response.headers.get('location')) break;
         if (redirectCount === 5) throw new Error('Website chuyển hướng quá 5 lần.');
-        const nextTarget = await validatePublicUrl(new URL(response.headers.get('location'), target).toString());
+        const nextTarget = await validateMonitorUrl(new URL(response.headers.get('location'), target).toString());
+        assertMonitorRedirectAllowed(initialTarget, nextTarget);
         await response.body?.cancel();
         target = nextTarget;
       }
@@ -439,32 +497,51 @@ async function performCheck(id) {
     });
     const recentChecks = await checksFor({ monitorId: id, limit: 4 });
     const checkData = { monitorId: id, status, responseTimeMs, httpStatus, error: errorMessage, checkedAt };
-    const diagnosis = diagnoseCheck(checkData, [checkData, ...recentChecks], monitor.slowThresholdMs);
+    let diagnosis = diagnoseCheck(checkData, [checkData, ...recentChecks], monitor.slowThresholdMs);
     const check = await saveCheck({ ...checkData, diagnosis });
 
     // --- Xữ lý cảnh báo & quản lý sự cố ---
     if (status === 'DOWN') {
       // Reset bộ đếm SLOW khi DOWN
       slowConsecutiveCounts.set(id, 0);
-      // Mở hoặc cập nhật sự cố
-      let incident = await openIncidentFor(id);
-      if (incident) await updateIncidentDiagnosis(incident, diagnosis);
-      else incident = await startIncident(updated, diagnosis);
-      // Gửi email ngay lập tức mỗi lần DOWN
+      // Mỗi lượt kiểm tra DOWN được lưu thành một sự cố riêng, kể cả khi đã có sự cố đang mở.
+      const incident = await startIncident(updated, diagnosis);
       await sendAlertEmail(updated, 'down', checkedAt, { diagnosis });
+
+      if (!aiDiagnosisAttemptedMonitors.has(id)) {
+        aiDiagnosisAttemptedMonitors.add(id);
+        const aiDiagnosis = await analyzeIncidentWithAI({
+          monitor: updated,
+          check: checkData,
+          recentChecks: [checkData, ...recentChecks],
+        });
+        if (aiDiagnosis) {
+          diagnosis = { ...diagnosis, ...aiDiagnosis, evidence: diagnosis.evidence };
+          await updateIncidentDiagnosis(incident, diagnosis);
+          await updateCheckDiagnosis(check, diagnosis);
+        }
+      }
     } else if (status === 'SLOW') {
       // Đếm số lần SLOW liên tiếp
       const prev = slowConsecutiveCounts.get(id) ?? 0;
       const next = prev + 1;
       slowConsecutiveCounts.set(id, next);
       if (next >= 3 && next % 3 === 0) {
-        // Gửi cảnh báo khi SLOW đủ 3 lần, rồi mỗi 3 lần tiếp theo
+        // Phân tích AI và gửi cảnh báo sau mỗi 3 lượt SLOW liên tiếp.
+        const aiDiagnosis = await analyzeIncidentWithAI({
+          monitor: updated,
+          check: checkData,
+          recentChecks: [checkData, ...recentChecks],
+        });
+        if (aiDiagnosis) {
+          diagnosis = { ...diagnosis, ...aiDiagnosis, evidence: diagnosis.evidence };
+          await updateCheckDiagnosis(check, diagnosis);
+        }
         await sendAlertEmail(updated, 'slow', checkedAt, { diagnosis, responseTimeMs, slowCount: next });
       }
       // Nếu trước đó đang DOWN, đóng sự cố và gửi email khôi phục
       if (previousStatus === 'DOWN') {
-        const incident = await openIncidentFor(id);
-        if (incident) await resolveIncident(incident);
+        await resolveOpenIncidentsFor(id);
         await sendAlertEmail(updated, 'recovered', checkedAt);
       }
     } else {
@@ -472,8 +549,7 @@ async function performCheck(id) {
       slowConsecutiveCounts.set(id, 0);
       // Nếu trước đó đang DOWN, đóng sự cố và gửi email khôi phục
       if (previousStatus === 'DOWN') {
-        const incident = await openIncidentFor(id);
-        if (incident) await resolveIncident(incident);
+        await resolveOpenIncidentsFor(id);
         await sendAlertEmail(updated, 'recovered', checkedAt);
       }
     }
@@ -485,6 +561,22 @@ async function performCheck(id) {
   } finally {
     activeChecks.delete(id);
   }
+}
+
+async function retryOpenIncidentAlerts() {
+  const openIncidents = storageMode === 'mongodb'
+    ? (await Incident.find({ status: 'OPEN' }).select('monitorId')).map((incident) => incident.monitorId)
+    : memory.incidents.filter((incident) => incident.status === 'OPEN').map((incident) => incident.monitorId);
+  const monitorIds = [...new Set(openIncidents)];
+  const activeMonitors = (await Promise.all(monitorIds.map(getMonitor)))
+    .filter(isMonitorAlertEnabled);
+  await Promise.allSettled(activeMonitors.map(async (monitor) => {
+    try {
+      await performCheck(monitor.id);
+    } catch (error) {
+      console.error(`[alert] Không thể thử lại cảnh báo sự cố đang mở cho website ${monitor.id}:`, error);
+    }
+  }));
 }
 
 function rangeStart(value) {
@@ -505,6 +597,7 @@ app.get('/api/health', (_req, res) => {
     status: 'ok',
     storage: storageMode,
     email: Boolean(mailer),
+    ai: isAiDiagnosisEnabled(),
   });
 });
 
@@ -525,7 +618,7 @@ app.post('/api/monitors', auth.requireAdmin, async (req, res, next) => {
     if (data.ownerId && !await auth.isAssignableOwner(data.ownerId)) {
       return res.status(400).json({ error: 'Chỉ có thể gán website cho tài khoản User đang hoạt động.' });
     }
-    await validatePublicUrl(data.url);
+    await validateMonitorUrl(data.url);
     const monitor = await createMonitor(data);
     res.status(201).json(monitor);
     void performCheck(monitor.id).catch((error) => console.error('[monitor] Kiểm tra lần đầu thất bại:', error));
@@ -545,9 +638,26 @@ app.patch('/api/monitors/:id', auth.requireAdmin, async (req, res, next) => {
     if (changes.ownerId && !await auth.isAssignableOwner(changes.ownerId)) {
       return res.status(400).json({ error: 'Chỉ có thể gán website cho tài khoản User đang hoạt động.' });
     }
-    if (changes.url !== current.url) await validatePublicUrl(changes.url);
+    if (changes.url !== current.url) await validateMonitorUrl(changes.url);
     const monitor = await updateMonitor(req.params.id, changes);
+    if (changes.name !== current.name) await renameIncidentMonitor(monitor.id, changes.name);
     res.json(monitor);
+    if (changes.ownerId && changes.ownerId !== current.ownerId && current.status === 'DOWN') {
+      void (async () => {
+        const incident = await openIncidentFor(monitor.id);
+        if (!incident) return;
+        const recipients = await auth.notificationRecipients(changes.ownerId, {
+          includeAdmins: false,
+          includeDefault: false,
+        });
+        if (recipients.length) {
+          await sendAlertEmail(monitor, 'down', current.lastCheckedAt ?? new Date(), {
+            diagnosis: incident.diagnosis,
+            recipientsOverride: recipients,
+          });
+        }
+      })().catch((error) => console.error(`[alert] Không thể gửi thông báo cho User mới được gán vào "${monitor.name}":`, error));
+    }
     if (monitor.enabled && (!current.enabled || changes.url !== current.url)) {
       void performCheck(monitor.id).catch((error) => console.error('[monitor] Kiểm tra website thất bại:', error));
     }
@@ -622,9 +732,9 @@ app.get('/api/reports', async (req, res, next) => {
     ]);
     const selectedMonitors = monitors.filter((monitor) => !monitorId || monitor.id === monitorId);
     const buckets = new Map();
+    const bucketSize = req.query.range === '30d' || req.query.range === '7d' ? 60 * 60 * 1000 : 15 * 60 * 1000;
     for (const check of [...checks].reverse()) {
       const date = new Date(check.checkedAt);
-      const bucketSize = req.query.range === '30d' ? 60 * 60 * 1000 : 15 * 60 * 1000;
       const key = new Date(Math.floor(date.getTime() / bucketSize) * bucketSize).toISOString();
       const bucket = buckets.get(key) ?? { timestamp: key, total: 0, responseTotal: 0, responseCount: 0 };
       bucket.total += 1;
@@ -725,17 +835,13 @@ async function start() {
   if (storageMode === 'mongodb') await auth.bootstrapAdmin();
 
   if (process.env.SMTP_HOST) {
-    mailer = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT || 587),
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined,
-    });
+    mailer = nodemailer.createTransport(buildSmtpTransportOptions(process.env));
   } else {
     console.warn('[alert] Chưa cấu hình SMTP_HOST; email cảnh báo đang tắt.');
   }
 
   app.listen(port, '0.0.0.0', () => console.info(`[server] API sẵn sàng tại http://localhost:${port}`));
+  void retryOpenIncidentAlerts().catch((error) => console.error('[alert] Không thể thử lại các cảnh báo đang mở:', error));
   cron.schedule('* * * * *', () => {
     void runScheduledChecks().catch((error) => console.error('[monitor] Lịch kiểm tra thất bại:', error));
   });

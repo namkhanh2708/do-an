@@ -87,5 +87,6 @@ export function diagnoseCheck(check, recentChecks, slowThresholdMs) {
     possibleCauses: causes,
     recommendedActions: actions,
     confidenceNote: 'Nguyên nhân trên chỉ là khả năng dựa trên dấu hiệu đã quan sát; cần log hoặc số liệu máy chủ để xác nhận.',
+    source: 'rules',
   };
 }

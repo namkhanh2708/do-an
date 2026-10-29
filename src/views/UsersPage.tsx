@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Check, LockKeyhole, Plus, Trash2, UnlockKeyhole, Users, X } from 'lucide-react';
+import { Check, LockKeyhole, Pencil, Plus, Trash2, UnlockKeyhole, Users, X } from 'lucide-react';
 import type { Account, UserRole } from '../types/monitor';
 import type { UsersPageProps } from './types';
 import { tw } from './tailwind';
@@ -16,6 +16,7 @@ export default function UsersPage({
 }: UsersPageProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('');
   const [role, setRole] = useState<UserRole>('user');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -25,6 +26,11 @@ export default function UsersPage({
   const [assignmentBusy, setAssignmentBusy] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Account | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null);
+  const [editingUsername, setEditingUsername] = useState('');
+  const [editingEmail, setEditingEmail] = useState('');
+  const [editingPassword, setEditingPassword] = useState('');
+  const [editBusy, setEditBusy] = useState(false);
 
   useEffect(() => {
     if (assignmentUser) {
@@ -38,9 +44,10 @@ export default function UsersPage({
     setError('');
     setNotice('');
     try {
-      await onAccountCreate(username.trim(), password, role);
+      await onAccountCreate(username.trim(), password, role, email.trim());
       setUsername('');
       setPassword('');
+      setEmail('');
       setRole('user');
       setNotice('Đã tạo tài khoản.');
     } catch (reason) {
@@ -50,7 +57,7 @@ export default function UsersPage({
     }
   }
 
-  async function updateAccount(id: string, changes: { role?: UserRole; isActive?: boolean }) {
+  async function updateAccount(id: string, changes: { role?: UserRole; isActive?: boolean; email?: string }) {
     setError('');
     setNotice('');
     try {
@@ -58,6 +65,28 @@ export default function UsersPage({
       setNotice('Đã cập nhật tài khoản.');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Không thể cập nhật tài khoản.');
+    }
+  }
+
+  async function saveAccountDetails(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingAccount) return;
+    setEditBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      await onAccountUpdate(editingAccount.id, {
+        username: editingUsername.trim(),
+        email: editingEmail.trim(),
+        ...(editingPassword ? { password: editingPassword } : {}),
+      });
+      setNotice(`Đã cập nhật tài khoản ${editingUsername.trim()}.`);
+      setEditingAccount(null);
+      setEditingPassword('');
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Không thể cập nhật tài khoản.');
+    } finally {
+      setEditBusy(false);
     }
   }
 
@@ -105,7 +134,7 @@ export default function UsersPage({
   return (
     <section className={tw('panel table-panel full-table-panel')}>
       <div className={tw('users-heading')}>
-        <div><h2>Quản lý tài khoản</h2><p>Xem tài khoản, thay đổi vai trò và khóa hoặc mở khóa người dùng.</p></div>
+        <div><h2>Quản lý tài khoản</h2><p>Sửa tên đăng nhập, Gmail, mật khẩu; quản lý quyền và trạng thái. Admin nhận cảnh báo mọi website, User nhận cảnh báo website được gán.</p></div>
       </div>
       {error && <div className={tw('users-error')} role="alert">{error}</div>}
       {notice && <div className={tw('users-notice')} role="status">{notice}</div>}
@@ -116,6 +145,9 @@ export default function UsersPage({
         </label>
         <label>Mật khẩu tạm thời
           <input required minLength={6} maxLength={128} type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Ít nhất 6 ký tự" />
+        </label>
+        <label>Gmail nhận cảnh báo (tùy chọn)
+          <input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="user@example.com" />
         </label>
         <label>Vai trò ban đầu
           <select value={role} onChange={(event) => setRole(event.target.value as UserRole)}>
@@ -128,11 +160,12 @@ export default function UsersPage({
 
       <div className={tw('users-table-scroll')}>
         <table>
-          <thead><tr><th>TÀI KHOẢN</th><th>VAI TRÒ</th><th>TRẠNG THÁI</th><th>NGÀY TẠO</th><th>HÀNH ĐỘNG</th></tr></thead>
+          <thead><tr><th>TÀI KHOẢN</th><th>GMAIL</th><th>VAI TRÒ</th><th>TRẠNG THÁI</th><th>NGÀY TẠO</th><th>HÀNH ĐỘNG</th></tr></thead>
           <tbody>
             {accounts.map((account) => (
               <tr key={account.id}>
                 <td><strong>{account.username}</strong></td>
+                <td>{account.email || 'Chưa cấu hình'}</td>
                 <td>
                   <select
                     aria-label={`Vai trò của ${account.username}`}
@@ -148,6 +181,18 @@ export default function UsersPage({
                 <td>{new Date(account.createdAt).toLocaleDateString('vi-VN')}</td>
                 <td>
                   <div className={tw('user-actions')}>
+                    <button
+                      className={tw('button button-secondary user-action-button')}
+                      type="button"
+                      onClick={() => {
+                        setEditingAccount(account);
+                        setEditingUsername(account.username);
+                        setEditingEmail(account.email);
+                        setEditingPassword('');
+                      }}
+                    >
+                      <Pencil size={14} /> Sửa tài khoản
+                    </button>
                     {account.role === 'user' && (
                       <button
                         className={tw('button button-secondary user-action-button')}
@@ -180,10 +225,40 @@ export default function UsersPage({
                 </td>
               </tr>
             ))}
-            {accounts.length === 0 && <tr><td colSpan={5}><div className={tw('users-empty')}><Users size={20} />Chưa có tài khoản.</div></td></tr>}
+            {accounts.length === 0 && <tr><td colSpan={6}><div className={tw('users-empty')}><Users size={20} />Chưa có tài khoản.</div></td></tr>}
           </tbody>
         </table>
       </div>
+      {editingAccount && (
+        <div className={tw('assignment-backdrop')} onMouseDown={(event) => event.target === event.currentTarget && !editBusy && setEditingAccount(null)}>
+          <section className={tw('assignment-dialog')} role="dialog" aria-modal="true" aria-labelledby="edit-user-title">
+            <div className={tw('assignment-heading')}>
+              <div><h2 id="edit-user-title">Sửa tài khoản · {editingAccount.username}</h2><p>{editingAccount.role === 'admin' ? 'Admin sẽ nhận cảnh báo của tất cả website.' : 'User sẽ nhận cảnh báo của các website được gán.'}</p></div>
+              <button type="button" className={tw('assignment-close')} aria-label="Đóng" disabled={editBusy} onClick={() => setEditingAccount(null)}><X size={18} /></button>
+            </div>
+            <form onSubmit={(event) => void saveAccountDetails(event)}>
+              <label className={tw('user-email-edit-label')}>Tên đăng nhập
+                <input type="text" autoFocus autoComplete="username" required minLength={3} maxLength={32} pattern="[a-zA-Z0-9._-]{3,32}" value={editingUsername} onChange={(event) => setEditingUsername(event.target.value)} />
+                <small>3–32 ký tự: chữ, số, dấu chấm, gạch ngang hoặc gạch dưới.</small>
+              </label>
+              <label className={tw('user-email-edit-label')}>Gmail nhận cảnh báo
+                <input type="email" autoComplete="email" value={editingEmail} onChange={(event) => setEditingEmail(event.target.value)} placeholder="user@example.com" />
+                <small>{editingAccount.role === 'admin' ? 'Admin nhận cảnh báo của mọi website.' : 'User nhận cảnh báo của các website được gán.'}</small>
+              </label>
+              <label className={tw('user-email-edit-label')}>Mật khẩu mới (không bắt buộc)
+                <input type="password" autoComplete="new-password" minLength={6} maxLength={128} value={editingPassword} onChange={(event) => setEditingPassword(event.target.value)} placeholder="Để trống để giữ nguyên mật khẩu" />
+                <small>Nếu đặt mật khẩu mới, các phiên đăng nhập khác của tài khoản sẽ bị đăng xuất.</small>
+              </label>
+              <div className={tw('assignment-actions')}>
+                <button type="button" className={tw('button button-secondary')} disabled={editBusy} onClick={() => setEditingAccount(null)}>Hủy</button>
+                <button type="submit" className={tw('button button-primary')} disabled={editBusy}>
+                  <Check size={14} />{editBusy ? 'Đang lưu…' : 'Lưu thay đổi'}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
       {assignmentUser && (
         <div className={tw('assignment-backdrop')} onMouseDown={(event) => event.target === event.currentTarget && !assignmentBusy && setAssignmentUser(null)}>
           <section className={tw('assignment-dialog')} role="dialog" aria-modal="true" aria-labelledby="assignment-dialog-title">

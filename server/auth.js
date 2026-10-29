@@ -3,6 +3,8 @@ import { promisify } from 'node:util';
 import express from 'express';
 import mongoose from 'mongoose';
 import { isAdmin } from './authorization.js';
+import { getAlertRecipients, normalizeEmailAddress } from './email-recipients.js';
+import { validatePassword, validateUsername } from './auth-validation.js';
 
 const scrypt = promisify(scryptCallback);
 const sessionCookie = 'uptime_session';
@@ -14,6 +16,7 @@ const userSchema = new mongoose.Schema({
   usernameLower: { type: String, required: true, unique: true, index: true },
   passwordSalt: { type: String, required: true, select: false },
   passwordHash: { type: String, required: true, select: false },
+  email: { type: String, default: '' },
   role: { type: String, enum: ['admin', 'user'], default: 'user' },
   isActive: { type: Boolean, default: true },
 }, { timestamps: true });
@@ -25,17 +28,16 @@ async function hashPassword(password, salt = randomBytes(16).toString('hex')) {
   return { salt, hash: hash.toString('hex') };
 }
 
+async function passwordMatches(password, salt, expectedHash) {
+  const { hash } = await hashPassword(password, salt);
+  const expected = Buffer.from(expectedHash, 'hex');
+  const actual = Buffer.from(hash, 'hex');
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
+}
+
 function validateCredentials(body) {
-  const username = typeof body?.username === 'string' ? body.username.trim() : '';
-  const password = typeof body?.password === 'string' ? body.password : '';
-
-  if (!/^[a-zA-Z0-9._-]{3,32}$/.test(username)) {
-    throw Object.assign(new Error('Tên tài khoản cần từ 3–32 ký tự, chỉ gồm chữ, số, dấu chấm, gạch ngang hoặc gạch dưới.'), { status: 400 });
-  }
-  if (password.length < 6 || password.length > 128) {
-    throw Object.assign(new Error('Mật khẩu cần có từ 6 đến 128 ký tự.'), { status: 400 });
-  }
-
+  const username = validateUsername(body?.username);
+  const password = validatePassword(body?.password);
   return { username, password };
 }
 
@@ -43,6 +45,7 @@ function publicUser(user) {
   return {
     id: String(user._id),
     username: user.username,
+    email: user.email ?? '',
     role: user.role,
     isActive: user.isActive,
     createdAt: user.createdAt,
@@ -138,10 +141,7 @@ export function createAuthRouter({ isMongoConnected, onUserDeleted }) {
       if (!user) return res.status(401).json({ error: 'Tên tài khoản hoặc mật khẩu không chính xác.' });
       if (!user.isActive) return res.status(403).json({ error: 'Tài khoản đã bị khóa. Hãy liên hệ quản trị viên.' });
 
-      const { hash } = await hashPassword(password, user.passwordSalt);
-      const expected = Buffer.from(user.passwordHash, 'hex');
-      const actual = Buffer.from(hash, 'hex');
-      if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
+      if (!await passwordMatches(password, user.passwordSalt, user.passwordHash)) {
         return res.status(401).json({ error: 'Tên tài khoản hoặc mật khẩu không chính xác.' });
       }
 
@@ -174,6 +174,54 @@ export function createAuthRouter({ isMongoConnected, onUserDeleted }) {
     }
   });
 
+  router.patch('/me', authenticate, async (req, res, next) => {
+    try {
+      const allowedFields = new Set(['username', 'email', 'currentPassword', 'password']);
+      if (Object.keys(req.body ?? {}).some((key) => !allowedFields.has(key))) {
+        return res.status(400).json({ error: 'Thông tin cập nhật không hợp lệ.' });
+      }
+
+      const user = await User.findById(req.user.id).select('+passwordSalt +passwordHash');
+      if (!user) return res.status(401).json({ error: 'Tài khoản không còn tồn tại.' });
+
+      if (req.body?.username !== undefined) {
+        user.username = validateUsername(req.body.username);
+        user.usernameLower = user.username.toLowerCase();
+      }
+      if (req.body?.email !== undefined) {
+        user.email = normalizeEmailAddress(req.body.email);
+      }
+
+      const passwordInput = req.body?.password;
+      if (passwordInput !== undefined && passwordInput !== '') {
+        const password = validatePassword(passwordInput);
+        const currentPassword = validatePassword(req.body?.currentPassword);
+        if (!await passwordMatches(currentPassword, user.passwordSalt, user.passwordHash)) {
+          return res.status(400).json({ error: 'Mật khẩu hiện tại không chính xác.' });
+        }
+        const credentials = await hashPassword(password);
+        user.passwordSalt = credentials.salt;
+        user.passwordHash = credentials.hash;
+      } else if (req.body?.currentPassword !== undefined && req.body.currentPassword !== '') {
+        return res.status(400).json({ error: 'Nhập mật khẩu mới để xác nhận đổi mật khẩu.' });
+      }
+
+      await user.save();
+      if (passwordInput) {
+        const currentToken = readSessionToken(req);
+        for (const [token, session] of sessions) {
+          if (String(session.userId) === String(user._id) && token !== currentToken) sessions.delete(token);
+        }
+      }
+      res.json(publicUser(user));
+    } catch (error) {
+      if (error.code === 11000) {
+        return res.status(409).json({ error: 'Tên tài khoản này đã được sử dụng.' });
+      }
+      next(error);
+    }
+  });
+
   router.use('/admin', authenticate, requireAdmin);
 
   router.get('/admin/users', async (_req, res, next) => {
@@ -189,6 +237,7 @@ export function createAuthRouter({ isMongoConnected, onUserDeleted }) {
     try {
       const { username, password } = validateCredentials(req.body);
       const role = req.body?.role ?? 'user';
+      const email = normalizeEmailAddress(req.body?.email);
       if (!['admin', 'user'].includes(role)) {
         return res.status(400).json({ error: 'Vai trò phải là admin hoặc user.' });
       }
@@ -199,6 +248,7 @@ export function createAuthRouter({ isMongoConnected, onUserDeleted }) {
         usernameLower: username.toLowerCase(),
         passwordSalt: salt,
         passwordHash: hash,
+        email,
         role,
         isActive: true,
       });
@@ -221,6 +271,12 @@ export function createAuthRouter({ isMongoConnected, onUserDeleted }) {
 
       const role = req.body?.role ?? user.role;
       const isActive = req.body?.isActive ?? user.isActive;
+      const username = req.body?.username === undefined ? user.username : validateUsername(req.body.username);
+      const email = req.body?.email === undefined ? user.email ?? '' : normalizeEmailAddress(req.body.email);
+      const passwordInput = req.body?.password;
+      const password = passwordInput === undefined || passwordInput === ''
+        ? null
+        : validatePassword(passwordInput);
       if (!['admin', 'user'].includes(role) || typeof isActive !== 'boolean') {
         return res.status(400).json({ error: 'Vai trò hoặc trạng thái tài khoản không hợp lệ.' });
       }
@@ -236,9 +292,26 @@ export function createAuthRouter({ isMongoConnected, onUserDeleted }) {
 
       user.role = role;
       user.isActive = isActive;
+      user.username = username;
+      user.usernameLower = username.toLowerCase();
+      user.email = email;
+      if (password) {
+        const credentials = await hashPassword(password);
+        user.passwordSalt = credentials.salt;
+        user.passwordHash = credentials.hash;
+      }
       await user.save();
+      if (password) {
+        const currentToken = readSessionToken(req);
+        for (const [token, session] of sessions) {
+          if (String(session.userId) === String(user._id) && token !== currentToken) sessions.delete(token);
+        }
+      }
       res.json(publicUser(user));
     } catch (error) {
+      if (error.code === 11000) {
+        return res.status(409).json({ error: 'Tên tài khoản này đã được sử dụng.' });
+      }
       next(error);
     }
   });
@@ -311,6 +384,25 @@ export function createAuthRouter({ isMongoConnected, onUserDeleted }) {
     async isAssignableOwner(userId) {
       if (!mongoose.isValidObjectId(userId)) return false;
       return Boolean(await User.exists({ _id: userId, role: 'user', isActive: true }));
+    },
+    async notificationRecipients(ownerId, { includeAdmins = true, includeDefault = true } = {}) {
+      const defaultEmails = includeDefault ? process.env.ALERT_EMAIL ?? '' : '';
+      if (!isMongoConnected()) {
+        const recipients = getAlertRecipients([], '', defaultEmails);
+        if (recipients === null) throw new Error('ALERT_EMAIL có địa chỉ không hợp lệ.');
+        return recipients;
+      }
+
+      const eligibleUsers = includeAdmins ? [{ role: 'admin', isActive: true }] : [];
+      if (ownerId && mongoose.isValidObjectId(ownerId)) {
+        eligibleUsers.push({ _id: ownerId, role: 'user', isActive: true });
+      }
+      const users = eligibleUsers.length
+        ? await User.find({ $or: eligibleUsers }).select('email role isActive').lean()
+        : [];
+      const recipients = getAlertRecipients(users, ownerId, defaultEmails);
+      if (recipients === null) throw new Error('Email cảnh báo trong cấu hình tài khoản hoặc ALERT_EMAIL không hợp lệ.');
+      return recipients;
     },
   };
 }

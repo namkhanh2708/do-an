@@ -45,17 +45,23 @@ Vite và Express lắng nghe trên các giao diện mạng của máy chạy ứ
 
 ## Chức năng
 
-- **Dashboard:** tổng số lượt kiểm tra, uptime theo khoảng thời gian, thời gian phản hồi trung bình, số sự cố, thời gian khôi phục trung bình, biểu đồ độ trễ và trạng thái UP/SLOW/DOWN.
+- **Dashboard:** tổng số lượt kiểm tra, uptime theo khoảng thời gian, thời gian phản hồi trung bình, số sự cố, thời gian khôi phục trung bình, danh sách sự cố cuộn theo khoảng thời gian đang chọn và trạng thái UP/SLOW/DOWN. Mỗi lượt kiểm tra ghi nhận DOWN tạo một bản ghi và email riêng, kể cả khi website vẫn đang DOWN; khi website phục hồi, tất cả bản ghi DOWN đang mở được đánh dấu đã khôi phục. Chọn một mục để mở đúng bản ghi lịch sử; danh sách tự làm mới mỗi 30 giây.
 - **Quản lý website:** thêm, sửa, xóa URL; bật/tắt giám sát; tìm kiếm; kiểm tra thủ công; xem lịch sử từng lượt kiểm tra. Xóa website sẽ xóa cả lịch sử kiểm tra và sự cố liên quan.
 - **Tự động giám sát:** kiểm tra HTTP định kỳ mỗi 1, 5 hoặc 15 phút; ghi nhận mã HTTP, độ trễ và thời điểm; phân loại DOWN khi lỗi kết nối hoặc HTTP 4xx/5xx, SLOW khi vượt ngưỡng cấu hình, các phản hồi khác là UP.
-- **Lịch sử sự cố:** mở sự cố khi website chuyển sang DOWN, tránh ghi lặp trong cùng sự cố và lưu thời điểm phục hồi cùng thời gian gián đoạn.
-- **Phân tích sự cố:** chẩn đoán theo quy tắc từ HTTP status, timeout, response time và tối đa 5 lượt kiểm tra gần nhất; hiển thị bằng chứng, nguyên nhân có thể và hướng xử lý trong nhật ký sự cố/lịch sử kiểm tra. Nguyên nhân chỉ là giả thuyết, không thay thế log hoặc số liệu máy chủ.
-- **Thông báo email:** gửi email một lần khi DOWN (kèm bằng chứng và khuyến nghị chẩn đoán) và một lần khi phục hồi. Có thể cấu hình email riêng trên monitor hoặc dùng `ALERT_EMAIL` mặc định.
+- **Lịch sử sự cố:** lưu một bản ghi mỗi lượt kiểm tra DOWN và cập nhật trạng thái/thời điểm phục hồi cùng thời gian gián đoạn. Khi website phục hồi, các bản ghi DOWN đang mở trong đợt đó đều được đánh dấu đã khôi phục. Khi đổi tên website, tên mới cũng được cập nhật cho toàn bộ lịch sử sự cố cũ.
+- **Phân tích sự cố:** giữ dấu hiệu thực đo từ HTTP status, lỗi, độ trễ và lịch sử; dùng Groq AI để đề xuất nguyên nhân và hướng xử lý cho sự cố DOWN mới và mỗi 3 lượt SLOW liên tiếp. Nếu AI lỗi hoặc chưa cấu hình, dùng chẩn đoán theo quy tắc. Lịch sử kiểm tra và sự cố hiển thị nguồn phân tích.
+- **Thông báo email:** chỉ gửi email cho website đang bật giám sát, gồm email ở mỗi lượt kiểm tra ghi nhận DOWN (kể cả sự cố đang mở), cảnh báo SLOW theo ngưỡng và email phục hồi; người nhận là tất cả Admin có Gmail cùng User đang được gán cho website. Website tạm dừng sẽ không gửi email và sự cố đang mở của website tạm dừng sẽ không được kiểm tra lại khi backend khởi động. Khi gán User vào website đang DOWN và còn bật giám sát, User đó cũng được gửi thông tin sự cố hiện tại. Admin quản lý tên đăng nhập, mật khẩu và Gmail trong trang tài khoản; không cần nhập email thủ công trên từng website. `ALERT_EMAIL` vẫn có thể dùng làm địa chỉ nhận thêm tùy chọn.
 - **Báo cáo:** lọc theo website và 24 giờ/7 ngày/30 ngày, thống kê từng website và xuất CSV.
 - **Phân quyền:** phiên đăng nhập dùng cookie HttpOnly; Admin quản lý tài khoản, thay đổi role, khóa/mở khóa và xóa tài khoản. Chỉ Admin được cấu hình website hoặc kiểm tra thủ công. Admin gán mỗi website cho một User; User chỉ xem website được gán, cùng dữ liệu lịch sử và báo cáo của website đó. Website chưa gán chỉ Admin xem được. Xóa tài khoản sẽ thu hồi phiên đăng nhập và gỡ gán website, không xóa dữ liệu website.
 - **Tài khoản:** đăng ký và đăng nhập qua API; tài khoản lưu trong MongoDB và mật khẩu được băm bằng scrypt. Cần cấu hình `MONGODB_URI` để sử dụng. Phiên đăng nhập bị xóa khi backend khởi động lại.
-- **An toàn URL:** chỉ nhận HTTP/HTTPS công khai; từ chối localhost/địa chỉ nội bộ và kiểm tra lại địa chỉ đích khi theo dõi/chuyển hướng.
-- **Tự làm mới:** dashboard tải lại dữ liệu định kỳ mỗi 30 giây; API health báo trạng thái MongoDB và SMTP.
+- **URL giám sát:** hỗ trợ HTTP/HTTPS công khai, localhost và IP IPv4 riêng (10/8, 172.16/12, 192.168/16); kiểm tra URL chuyển hướng để tránh chuyển từ website công khai vào mạng riêng. Link local được truy cập từ máy chạy backend; chỉ thêm thiết bị/dịch vụ mà bạn có quyền giám sát.
+- **Tự làm mới:** dashboard tải lại dữ liệu định kỳ mỗi 30 giây; API health báo trạng thái MongoDB, SMTP và cấu hình AI.
+
+### Công thức tính thời gian phản hồi và uptime
+
+- **Thời gian phản hồi mỗi lượt (ms):** `thời điểm nhận được HTTP response - thời điểm bắt đầu kiểm tra`. Thời gian này tính cả bước phân giải/kiểm tra DNS và các lần chuyển hướng, nhưng dừng khi nhận được response; không tính thời gian tải toàn bộ nội dung website. Nếu kiểm tra lỗi hoặc timeout, hệ thống vẫn ghi thời gian đã trôi qua, nhưng lượt DOWN đó không được tính vào thời gian phản hồi trung bình.
+- **Thời gian phản hồi trung bình:** `tổng thời gian phản hồi của các lượt UP và SLOW có số đo / số lượt UP và SLOW có số đo`. Lượt DOWN bị loại khỏi phép tính; lượt SLOW vẫn được tính.
+- **Uptime (%):** `(số lượt UP + số lượt SLOW) / tổng số lượt kiểm tra × 100`. Vì vậy, SLOW được tính là website có phản hồi; DOWN được tính là không khả dụng. Dashboard áp dụng công thức trên cho các lượt trong khoảng thời gian đang chọn; báo cáo từng website áp dụng riêng cho các lượt của website đó.
 
 ## Tra cứu mã nguồn
 
@@ -119,7 +125,11 @@ Bảng dưới đây dẫn tới các tệp chính theo từng chức năng đ�
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE` | Máy chủ SMTP và cổng gửi email. |
 | `SMTP_USER`, `SMTP_PASS` | Tài khoản SMTP, nếu máy chủ yêu cầu xác thực. |
 | `SMTP_FROM` | Địa chỉ người gửi; mặc định dùng `SMTP_USER`. |
-| `ALERT_EMAIL` | Email nhận cảnh báo mặc định nếu monitor chưa có email riêng. |
+| `ALERT_EMAIL` | Địa chỉ nhận thêm mọi cảnh báo (tùy chọn); nhiều email phân tách bằng dấu phẩy. |
+| `GROQ_API_KEY` | API key Groq để bật phân tích nguyên nhân và hướng xử lý bằng AI (tùy chọn). |
+| `GROQ_MODEL` | Model Groq; mặc định `openai/gpt-oss-20b`. |
+
+AI chỉ hỗ trợ phân tích, không thay thế email cảnh báo. Backend gửi tên website, hostname, trạng thái, mã HTTP, lỗi, độ trễ và thời điểm kiểm tra tới Groq; không gửi URL đầy đủ hoặc query string. Mục “Phân tích AI” trong thanh bên chỉ cho biết API key đã được cấu hình, không xác nhận key/model hợp lệ. Nếu AI lỗi, xem log backend có tiền tố `[ai-diagnosis]`; ứng dụng sẽ giữ chẩn đoán theo quy tắc.
 
 ### Gửi cảnh báo đến Gmail
 
@@ -134,10 +144,10 @@ SMTP_SECURE=false
 SMTP_USER=your-account@gmail.com
 SMTP_PASS=your-16-character-app-password
 SMTP_FROM=your-account@gmail.com
-ALERT_EMAIL=recipient@gmail.com
+ALERT_EMAIL=recipient@gmail.com,team@example.com
 ```
 
-Lưu lại rồi **khởi động lại backend** (`npm run dev`). Trong form thêm/sửa website, nhập email muốn nhận cảnh báo; nếu để trống, ứng dụng dùng `ALERT_EMAIL`. Backend chỉ gửi một thư khi trạng thái chuyển sang DOWN và một thư khi website phục hồi, không gửi lặp ở mỗi lượt kiểm tra trong cùng sự cố. Mục “Thông báo email” ở thanh bên báo SMTP đã được cấu hình hay chưa.
+Lưu lại rồi **khởi động lại backend** (`npm run dev`). Với Gmail, có thể dán App Password ở dạng chia nhóm có dấu cách; backend tự bỏ khoảng trắng trước khi xác thực SMTP. Nhập Gmail khi tạo hoặc sửa tài khoản trong trang Quản lý tài khoản. Admin đang hoạt động có Gmail sẽ nhận cảnh báo của mọi website; User đang hoạt động có Gmail chỉ nhận cảnh báo website được gán. Khi gán User vào website đang DOWN, hệ thống gửi email sự cố đang mở cho User đó. Backend gửi email ở mỗi lượt kiểm tra DOWN, bao gồm cả khi sự cố đã mở; do đó email DOWN sẽ lặp theo chu kỳ kiểm tra (1, 5 hoặc 15 phút) cho đến khi website phục hồi. Cảnh báo SLOW vẫn gửi sau mỗi 3 lượt SLOW liên tiếp và gửi email phục hồi khi website trở lại hoạt động. `ALERT_EMAIL` dùng để gửi bản sao tùy chọn ngoài danh sách người dùng. Mục “Thông báo email” ở thanh bên chỉ báo SMTP đã được cấu hình, không xác nhận máy chủ email đã chấp nhận thư.
 
 Trong bản `.env.example` hiện tại, các biến SMTP còn trống nên email **chưa gửi được cho đến khi bạn cấu hình**. Nếu sai App Password hoặc Gmail từ chối đăng nhập, xem lỗi `[alert]` trong terminal backend. Cấu hình SMTP không hợp lệ cũng có thể khiến Gmail từ chối gửi.
 

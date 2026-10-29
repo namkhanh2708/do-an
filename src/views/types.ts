@@ -1,5 +1,6 @@
 import type { Page, TimeRange } from '../types/app';
 import type { Account, Incident, Monitor, Report, UserRole } from '../types/monitor';
+import type { OutageSelection } from '../components/charts';
 
 export interface PageContentProps {
   page: Page;
@@ -26,10 +27,13 @@ export interface PageContentProps {
   checkMonitor: (monitor: Monitor) => void;
   setHistoryMonitor: (monitor: Monitor) => void;
   exportCsv: () => void;
-  onAccountCreate: (username: string, password: string, role: UserRole) => Promise<void>;
-  onAccountUpdate: (id: string, changes: { role?: UserRole; isActive?: boolean }) => Promise<void>;
+  onAccountCreate: (username: string, password: string, role: UserRole, email: string) => Promise<void>;
+  onAccountUpdate: (id: string, changes: { username?: string; password?: string; role?: UserRole; isActive?: boolean; email?: string }) => Promise<void>;
   onAccountDelete: (id: string) => Promise<void>;
   onMonitorAssignmentsChange: (userId: string, monitorIds: string[]) => Promise<void>;
+  incidentSelection: OutageSelection | null;
+  setIncidentSelection: (selection: OutageSelection | null) => void;
+  onOutageSelect: (selection: OutageSelection) => void;
 }
 
 export type DashboardPageProps = Pick<
@@ -47,6 +51,7 @@ export type DashboardPageProps = Pick<
   | 'toggleMonitor'
   | 'checkMonitor'
   | 'setHistoryMonitor'
+  | 'onOutageSelect'
   | 'isAdmin'
 >;
 
@@ -87,6 +92,8 @@ export type IncidentsPageProps = Pick<
   | 'loading'
   | 'monitorFilter'
   | 'setMonitorFilter'
+  | 'incidentSelection'
+  | 'setIncidentSelection'
 > & {
   statusFilter: 'ALL' | 'OPEN' | 'RESOLVED';
   setStatusFilter: (status: 'ALL' | 'OPEN' | 'RESOLVED') => void;

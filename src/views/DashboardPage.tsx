@@ -2,13 +2,12 @@ import {
   Activity,
   AlertTriangle,
   ArrowRight,
-  CheckCircle2,
   Clock3,
   HeartPulse,
   ShieldCheck,
 } from 'lucide-react';
-import { IncidentRow, LoadingRow, PanelHeading, MetricCard } from '../components/dashboard-widgets';
-import { PerformanceChart, UptimeChart } from '../components/charts';
+import { LoadingRow, PanelHeading, MetricCard } from '../components/dashboard-widgets';
+import { IncidentLogPanel, UptimeChart } from '../components/charts';
 import { MonitorTable } from '../components/monitor-management';
 import { formatDuration, formatMs, formatPercent } from '../utils/format';
 import { rangeLabels } from '../utils/report';
@@ -30,17 +29,27 @@ export default function DashboardPage({
   toggleMonitor,
   checkMonitor,
   setHistoryMonitor,
+  onOutageSelect,
   isAdmin,
 }: DashboardPageProps) {
   const enabledMonitorIds = new Set(monitors.filter((monitor) => monitor.enabled).map((monitor) => monitor.id));
   const monitoredIncidents = incidents.filter((incident) => enabledMonitorIds.has(incident.monitorId));
+  const seenOngoingMonitors = new Set<string>();
+  const ongoingIncidents = monitoredIncidents
+    .filter((incident) => incident.status === 'OPEN')
+    .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
+    .filter((incident) => {
+      if (seenOngoingMonitors.has(incident.monitorId)) return false;
+      seenOngoingMonitors.add(incident.monitorId);
+      return true;
+    });
 
   return (
     <>
       <section className={tw('metric-grid')}>
         <MetricCard icon={<ShieldCheck size={17} />} label="UPTIME" value={formatPercent(report.summary.uptimePercent)} note={`${report.summary.totalChecks.toLocaleString('vi-VN')} lượt kiểm tra`} color="green" />
         <MetricCard icon={<Activity size={17} />} label="PHẢN HỒI TRUNG BÌNH" value={formatMs(report.summary.averageResponseTimeMs)} note={`Trong ${rangeLabels[range].toLowerCase()}`} color="blue" />
-        <MetricCard icon={<AlertTriangle size={17} />} label="SỰ CỐ" value={String(monitoredIncidents.length)} note={`${activeIncidents} sự cố website`} color="amber" />
+        <MetricCard icon={<AlertTriangle size={17} />} label="SỰ CỐ" value={String(monitoredIncidents.length)} note={`${activeIncidents} website sập`} color="amber" />
         <MetricCard icon={<Clock3 size={17} />} label="THỜI GIAN KHÔI PHỤC TB" value={formatDuration(report.summary.meanRecoveryTimeMs)} note="Các sự cố đã xử lý" color="purple" />
       </section>
 
@@ -54,8 +63,8 @@ export default function DashboardPage({
 
       <section className={tw('chart-grid')}>
         <article className={tw('panel chart-panel')}>
-          <div className={tw('panel-heading')}><div><h2>Xu hướng thời gian phản hồi</h2><p>Đơn vị mili giây · {rangeLabels[range].toLowerCase()}</p></div><span className={tw('panel-icon blue-icon')}><Activity size={17} /></span></div>
-          <PerformanceChart data={report.series} range={range} />
+          <div className={tw('panel-heading')}><div><h2>Sự cố đang diễn ra</h2><p>{ongoingIncidents.length} website đang gặp sự cố · tự cập nhật mỗi 30 giây</p></div><span className={tw('panel-icon')}><AlertTriangle size={17} /></span></div>
+          <IncidentLogPanel incidents={ongoingIncidents} onSelect={onOutageSelect} />
         </article>
         <article className={tw('panel chart-panel uptime-panel')}>
           <div className={tw('panel-heading')}><div><h2>Phân bố trạng thái</h2><p>Tình trạng kiểm tra mới nhất</p></div><span className={tw('panel-icon green-icon')}><HeartPulse size={17} /></span></div>
@@ -81,10 +90,6 @@ export default function DashboardPage({
         )}
       </section>
 
-      <section className={tw('panel incidents-preview')}>
-        <PanelHeading title="Sự cố gần đây" subtitle="Website DOWN và thời gian khôi phục" action={<button className={tw('text-button')} onClick={() => setPage('incidents')}>Xem lịch sử <ArrowRight size={15} /></button>} />
-        {monitoredIncidents.length === 0 ? <div className={tw('empty-inline')}><CheckCircle2 size={17} /> Chưa ghi nhận sự cố nào từ các website đang được giám sát trong khoảng thời gian này.</div> : monitoredIncidents.slice(0, 3).map((incident) => <IncidentRow key={incident.id} incident={incident} />)}
-      </section>
     </>
   );
 }

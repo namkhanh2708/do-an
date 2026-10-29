@@ -28,12 +28,11 @@ export function MonitorDialog({
   const [url, setUrl] = useState(monitor?.url ?? '');
   const [intervalSeconds, setIntervalSeconds] = useState(monitor?.intervalSeconds ?? 60);
   const [slowThresholdMs, setSlowThresholdMs] = useState(monitor?.slowThresholdMs ?? 1000);
-  const [notificationEmail, setNotificationEmail] = useState(monitor?.notificationEmail ?? '');
   const [ownerId, setOwnerId] = useState(monitor?.ownerId ?? '');
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    onSave({ name: name.trim(), url: url.trim(), enabled: monitor?.enabled ?? true, intervalSeconds, slowThresholdMs, notificationEmail: notificationEmail.trim(), ownerId });
+    onSave({ name: name.trim(), url: url.trim(), enabled: monitor?.enabled ?? true, intervalSeconds, slowThresholdMs, ownerId });
   }
 
   return (
@@ -55,7 +54,7 @@ export function MonitorDialog({
           <label>
             URL cần theo dõi
             <input required type="url" placeholder="https://example.com" value={url} onChange={(event) => setUrl(event.target.value)} />
-            <small>Chỉ hỗ trợ địa chỉ HTTP/HTTPS công khai.</small>
+            <small>Hỗ trợ HTTP/HTTPS công khai, localhost hoặc IP IPv4 riêng (mạng LAN). Địa chỉ local được truy cập từ máy chạy backend.</small>
           </label>
           <div className={tw("form-grid")}>
             <label>
@@ -75,11 +74,6 @@ export function MonitorDialog({
             </label>
           </div>
           <label>
-            Email nhận cảnh báo (tùy chọn)
-            <input type="email" placeholder="admin@example.com" value={notificationEmail} onChange={(event) => setNotificationEmail(event.target.value)} />
-            <small>Nhận email khi website DOWN và khi đã khôi phục.</small>
-          </label>
-          <label>
             Cho phép User theo dõi
             <select value={ownerId} onChange={(event) => setOwnerId(event.target.value)}>
               <option value="">Chỉ Admin xem được</option>
@@ -91,7 +85,7 @@ export function MonitorDialog({
           </label>
           <div className={tw("dialog-actions")}>
             <button type="button" className={tw("button button-quiet")} onClick={onClose}>Hủy</button>
-            <button type="submit" className={tw("button button-primary px-4 text-[11px] whitespace-nowrap")} disabled={saving}>
+            <button type="submit" className={tw("button button-primary px-3 py-1 text-[10px] whitespace-nowrap")} disabled={saving}>
               {saving ? <LoaderCircle size={14} className={tw("spin")} /> : <Check size={14} />}
               {monitor ? 'Lưu thay đổi' : 'Thêm website'}
             </button>
@@ -187,9 +181,9 @@ export function DeleteMonitorDialog({
           Bạn sắp xóa <strong>{monitor.name}</strong>. Website và toàn bộ lịch sử theo dõi (các lần kiểm tra và sự cố liên quan) sẽ bị xóa vĩnh viễn.
         </p>
         {error && <div className={tw("inline-error dialog-error")}><AlertTriangle size={15} />{error}</div>}
-        <div className={tw("dialog-actions")}>
-          <button type="button" className={tw("button button-quiet")} disabled={deleting} onClick={onClose}>Hủy</button>
-          <button type="button" className={tw("button button-delete inline-flex min-h-9 items-center justify-center gap-2 rounded-[7px] border border-transparent px-4 text-[11px] font-semibold whitespace-nowrap transition-[filter,background]")} disabled={deleting} onClick={onConfirm}>
+        <div className={tw("dialog-actions delete-dialog-actions")}>
+          <button type="button" className={tw("button button-quiet delete-cancel-button")} disabled={deleting} onClick={onClose}>Hủy</button>
+          <button type="button" className={tw("button button-delete inline-flex min-h-8 items-center justify-center gap-1.5 rounded-[7px] border border-transparent px-3 py-1 text-[10px] font-semibold whitespace-nowrap transition-[filter,background]")} disabled={deleting} onClick={onConfirm}>
             {deleting ? <LoaderCircle size={14} className={tw("spin")} /> : <Trash2 size={14} />}
             {deleting ? 'Đang xóa…' : 'Xóa website và lịch sử'}
           </button>
@@ -334,13 +328,15 @@ const tailwindClasses: Record<string, string> = {
   'modal-backdrop': 'fixed inset-0 z-50 grid place-items-center bg-[#080d16b8] p-5 backdrop-blur-[4px]',
   dialog: 'w-full max-w-[650px] max-h-[90vh] overflow-y-auto rounded-xl border border-[#344257] bg-[#1c293a] p-6 text-[#e6edf8] shadow-[0_24px_80px_#060b1480] max-[640px]:p-4',
   'history-dialog': 'max-w-[890px]',
-  'delete-dialog': 'w-full max-w-[450px] rounded-xl border border-[#bfdbfe] bg-[#eaf3ff] p-6 text-center shadow-[0_24px_80px_#060b1480] [&_h2]:mb-2 [&_h2]:text-[18px] [&_h2]:text-[#172554] [&_p]:mb-5 [&_p]:text-[12px] [&_p]:leading-[1.7] [&_p]:text-[#334155] [&_p_strong]:text-[#172554]',
+  'delete-dialog': 'w-full max-w-[450px] rounded-xl border border-[#74424a] bg-[#1c293a] p-6 text-center text-[#e6edf8] shadow-[0_24px_80px_#060b1480] [&_h2]:mb-2 [&_h2]:text-[18px] [&_h2]:text-[#f0f4fa] [&_p]:mb-5 [&_p]:text-[12px] [&_p]:leading-[1.7] [&_p]:text-[#c2ccda] [&_p_strong]:text-white]',
   'delete-warning-icon': 'mx-auto mb-4 grid size-11 place-items-center rounded-full border border-[#74424a] bg-[#412a33] text-[#ff9299]',
   'dialog-heading': 'mb-5 flex items-start justify-between gap-[15px] [&_h2]:mb-0 [&_h2]:text-[18px] [&_h2]:text-[#f0f4fa] [&_.eyebrow]:mb-[7px]',
   'monitor-form': 'grid gap-[15px] [&_label]:grid [&_label]:gap-[7px] [&_label]:text-[11px] [&_label]:font-semibold [&_label]:text-[#c9d3e0] [&_input]:min-h-[39px] [&_input]:w-full [&_input]:rounded-md [&_input]:border [&_input]:border-[#3a4b60] [&_input]:bg-[#121e2e] [&_input]:px-[11px] [&_input]:text-[12px] [&_input]:text-[#e7edf6] [&_input]:outline-none [&_input]:placeholder:text-[#78899e] [&_input:focus]:border-[#46a9df] [&_select]:min-h-[39px] [&_select]:w-full [&_select]:rounded-md [&_select]:border [&_select]:border-[#3a4b60] [&_select]:bg-[#121e2e] [&_select]:px-[11px] [&_select]:text-[12px] [&_select]:text-[#e7edf6] [&_select]:outline-none [&_select:focus]:border-[#46a9df] [&_small]:text-[10px] [&_small]:font-normal [&_small]:text-[#93a3b7]',
   'form-grid': 'grid grid-cols-2 gap-3 max-[640px]:grid-cols-1',
   'input-with-unit': 'relative [&_input]:pr-[38px] [&>span]:absolute [&>span]:right-[11px] [&>span]:top-1/2 [&>span]:-translate-y-1/2 [&>span]:text-[10px] [&>span]:font-normal [&>span]:text-[#93a3b7]',
   'dialog-actions': 'mt-1 flex justify-end gap-2',
+  'delete-dialog-actions': 'mt-2 gap-4',
+  'delete-cancel-button': 'min-w-[82px] border border-[#526176] bg-[#253448] px-4 text-[#f0f4fa] hover:bg-[#304158]',
   'history-table': 'max-h-[54vh] max-[640px]:-mx-[17px] max-[640px]:w-[calc(100%+34px)] [&_th]:px-3 [&_th]:py-[10px] [&_td]:px-3 [&_td]:py-[10px]',
   'check-error': 'max-w-[230px] overflow-hidden text-ellipsis text-[#a6b4c6]',
   'check-error-diagnosis': 'min-w-[250px] max-w-[390px] whitespace-normal text-[#a6b4c6]',

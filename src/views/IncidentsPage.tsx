@@ -14,10 +14,17 @@ export default function IncidentsPage({
   setMonitorFilter,
   statusFilter,
   setStatusFilter,
+  incidentSelection,
+  setIncidentSelection,
 }: IncidentsPageProps) {
-  const openIncidents = incidents.filter((incident) => incident.status === 'OPEN');
-  const resolvedIncidents = incidents.filter((incident) => incident.status === 'RESOLVED');
-  const filteredIncidents = incidents.filter((incident) => {
+  const timeFilteredIncidents = incidentSelection
+    ? incidents.filter((incident) => {
+      return incidentSelection.incidentIds.includes(incident.id);
+    })
+    : incidents;
+  const openIncidents = timeFilteredIncidents.filter((incident) => incident.status === 'OPEN');
+  const resolvedIncidents = timeFilteredIncidents.filter((incident) => incident.status === 'RESOLVED');
+  const filteredIncidents = timeFilteredIncidents.filter((incident) => {
     if (statusFilter === 'OPEN' && incident.status !== 'OPEN') return false;
     if (statusFilter === 'RESOLVED' && incident.status !== 'RESOLVED') return false;
     if (monitorFilter && incident.monitorId !== monitorFilter) return false;
@@ -29,7 +36,9 @@ export default function IncidentsPage({
       <div className={tw('incidents-header-wrap')}>
         <PanelHeading
           title="Nhật ký gián đoạn"
-          subtitle={`${incidents.length} sự cố trong ${rangeLabels[range].toLowerCase()}`}
+          subtitle={incidentSelection
+            ? `${timeFilteredIncidents.length} bản ghi sự cố được chọn`
+            : `${incidents.length} sự cố trong ${rangeLabels[range].toLowerCase()}`}
           action={
             monitors.length > 0 && (
               <div className={tw('incidents-filter-group')}>
@@ -45,11 +54,11 @@ export default function IncidentsPage({
           }
         />
 
-        {incidents.length > 0 && (
+        {(timeFilteredIncidents.length > 0 || incidentSelection) && (
           <div className={tw('incidents-tabs-bar')}>
             <div className={tw('incidents-tabs')}>
               <button type="button" className={tw(`incident-tab ${statusFilter === 'ALL' ? 'tab-active' : ''}`)} onClick={() => setStatusFilter('ALL')}>
-                Tất cả <span className={tw('tab-count')}>{incidents.length}</span>
+                Tất cả <span className={tw('tab-count')}>{timeFilteredIncidents.length}</span>
               </button>
               <button type="button" className={tw(`incident-tab ${statusFilter === 'OPEN' ? 'tab-active tab-active-open' : ''}`)} onClick={() => setStatusFilter('OPEN')}>
                 <span className={tw('status-tab-dot dot-open')} />
@@ -65,6 +74,11 @@ export default function IncidentsPage({
                 Xóa lọc website
               </button>
             )}
+            {incidentSelection && (
+              <button type="button" className={tw('incident-filter-clear')} onClick={() => setIncidentSelection(null)}>
+                Xóa lọc theo biểu đồ
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -74,7 +88,7 @@ export default function IncidentsPage({
       ) : filteredIncidents.length === 0 ? (
         <div className={tw('empty-state incident-empty')}>
           <CheckCircle2 size={30} />
-          <h3>{incidents.length === 0 ? 'Không có sự cố' : 'Không có sự cố phù hợp với bộ lọc'}</h3>
+          <h3>{incidentSelection && timeFilteredIncidents.length === 0 ? 'Không có sự cố tại mốc này' : incidents.length === 0 ? 'Không có sự cố' : 'Không có sự cố phù hợp với bộ lọc'}</h3>
           <p>
             {incidents.length === 0
               ? 'Các website đang được theo dõi chưa ghi nhận trạng thái DOWN trong khoảng thời gian này.'

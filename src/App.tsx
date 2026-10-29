@@ -15,6 +15,7 @@ import { DeleteMonitorDialog, HistoryDialog, MonitorDialog } from './components/
 import PageContent from './views/PageContent';
 import type { Page, TimeRange } from './types/app';
 import type { Account, ApiHealth, Incident, Monitor, MonitorInput, Report, UserRole } from './types/monitor';
+import type { OutageSelection } from './components/charts';
 import { formatMs, statusLabel } from './utils/format';
 import { emptyReport } from './utils/report';
 
@@ -29,6 +30,7 @@ export default function App() {
   const [page, setPage] = useState<Page>('dashboard');
   const [range, setRange] = useState<TimeRange>('7d');
   const [monitorFilter, setMonitorFilter] = useState('');
+  const [incidentSelection, setIncidentSelection] = useState<OutageSelection | null>(null);
   const [monitors, setMonitors] = useState<Monitor[]>([]);
   const [report, setReport] = useState<Report>(emptyReport);
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -144,7 +146,6 @@ export default function App() {
         enabled: !monitor.enabled,
         intervalSeconds: monitor.intervalSeconds,
         slowThresholdMs: monitor.slowThresholdMs,
-        notificationEmail: monitor.notificationEmail,
         ownerId: monitor.ownerId,
       });
       setNotice(monitor.enabled ? 'Đã tạm dừng giám sát.' : 'Đã bật lại giám sát.');
@@ -194,13 +195,14 @@ export default function App() {
     }
   }
 
-  async function createAccount(username: string, password: string, role: UserRole) {
-    await api.createUser(username, password, role);
+  async function createAccount(username: string, password: string, role: UserRole, email: string) {
+    await api.createUser(username, password, role, email);
     setAccounts(await api.users());
   }
 
-  async function updateAccount(id: string, changes: { role?: UserRole; isActive?: boolean }) {
-    await api.updateUser(id, changes);
+  async function updateAccount(id: string, changes: { username?: string; password?: string; role?: UserRole; isActive?: boolean; email?: string }) {
+    const updatedUser = await api.updateUser(id, changes);
+    setCurrentUser((current) => current?.id === id ? updatedUser : current);
     setAccounts(await api.users());
   }
 
@@ -225,7 +227,6 @@ export default function App() {
         enabled: monitor.enabled,
         intervalSeconds: monitor.intervalSeconds,
         slowThresholdMs: monitor.slowThresholdMs,
-        notificationEmail: monitor.notificationEmail,
         ownerId: assigned.has(monitor.id) ? userId : '',
       })));
     } catch (error) {
@@ -325,16 +326,24 @@ export default function App() {
       apiError={apiError}
       actionError={actionError}
       notice={notice}
-      username={currentUser.username}
-      role={currentUser.role}
+      account={currentUser}
       onPageChange={setPage}
-      onRangeChange={setRange}
+      onRangeChange={(nextRange) => {
+        setIncidentSelection(null);
+        setRange(nextRange);
+      }}
       onMobileNavChange={setMobileNavOpen}
       onRefresh={() => void refresh()}
       onCreateMonitor={openCreateDialog}
       onExport={exportCsv}
       onClearActionError={() => setActionError('')}
       onClearNotice={() => setNotice('')}
+      onProfileUpdate={async (changes) => {
+        const updatedUser = await api.updateProfile(changes);
+        setCurrentUser(updatedUser);
+        setNotice('Đã cập nhật thông tin tài khoản.');
+        return updatedUser;
+      }}
       onLogout={handleLogout}
       overlay={
         <>
@@ -375,10 +384,20 @@ export default function App() {
         activeIncidents={activeIncidents}
         loading={loading}
         monitorFilter={monitorFilter}
+        incidentSelection={incidentSelection}
+        setIncidentSelection={setIncidentSelection}
+        onOutageSelect={(selection) => {
+          setIncidentSelection(selection);
+          setMonitorFilter('');
+          setPage('incidents');
+        }}
         search={search}
         checkingId={checkingId}
         setPage={setPage}
-        setMonitorFilter={setMonitorFilter}
+        setMonitorFilter={(monitorId) => {
+          setIncidentSelection(null);
+          setMonitorFilter(monitorId);
+        }}
         setSearch={setSearch}
         openCreateDialog={openCreateDialog}
         openEditDialog={openEditDialog}

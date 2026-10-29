@@ -49,7 +49,7 @@ export function DiagnosisPanel({
           <Sparkles size={14} className={tw("diagnosis-sparkle-icon")} />
           <h3>Phân tích nguyên nhân sự cố · Incident Diagnosis</h3>
         </div>
-        <span className={tw("diagnosis-badge")}>Tự động chẩn đoán</span>
+        <span className={tw("diagnosis-badge")}>{diagnosis?.source === 'ai' ? 'Phân tích AI' : 'Chẩn đoán tự động'}</span>
       </div>
 
       {!diagnosis ? (

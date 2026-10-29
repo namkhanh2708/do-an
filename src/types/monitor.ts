@@ -4,6 +4,7 @@ export type UserRole = 'admin' | 'user';
 export interface Account {
   id: string;
   username: string;
+  email: string;
   role: UserRole;
   isActive: boolean;
   createdAt: string;
@@ -16,7 +17,6 @@ export interface Monitor {
   enabled: boolean;
   intervalSeconds: number;
   slowThresholdMs: number;
-  notificationEmail: string;
   ownerId: string;
   status: MonitorStatus;
   lastCheckedAt: string | null;
@@ -43,6 +43,7 @@ export interface Diagnosis {
   possibleCauses: string[];
   recommendedActions: string[];
   confidenceNote: string;
+  source?: 'ai' | 'rules';
 }
 
 export interface Incident {
@@ -84,9 +85,10 @@ export interface ApiHealth {
   status: string;
   storage: 'mongodb' | 'memory';
   email: boolean;
+  ai: boolean;
 }
 
 export type MonitorInput = Pick<
   Monitor,
-  'name' | 'url' | 'enabled' | 'intervalSeconds' | 'slowThresholdMs' | 'notificationEmail' | 'ownerId'
+  'name' | 'url' | 'enabled' | 'intervalSeconds' | 'slowThresholdMs' | 'ownerId'
 >;

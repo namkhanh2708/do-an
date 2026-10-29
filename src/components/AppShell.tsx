@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -11,14 +11,15 @@ import {
   RefreshCw,
   WifiOff,
   LogOut,
+  UserRound,
   X,
   type LucideIcon,
 } from 'lucide-react';
-import type { ApiHealth } from '../types/monitor';
+import type { Account, ApiHealth } from '../types/monitor';
 import type { Page, TimeRange } from '../types/app';
-import type { UserRole } from '../types/monitor';
 import { rangeLabels } from '../utils/report';
 import { CircleHelpIcon } from './dashboard-widgets';
+import AccountProfileDialog from './AccountProfileDialog';
 
 interface NavigationItem {
   id: Page;
@@ -38,8 +39,7 @@ interface AppShellProps {
   apiError: string;
   actionError: string;
   notice: string;
-  username: string;
-  role: UserRole;
+  account: Account;
   onPageChange: (page: Page) => void;
   onRangeChange: (range: TimeRange) => void;
   onMobileNavChange: (isOpen: boolean) => void;
@@ -48,6 +48,7 @@ interface AppShellProps {
   onExport: () => void;
   onClearActionError: () => void;
   onClearNotice: () => void;
+  onProfileUpdate: (changes: { username: string; email: string; currentPassword?: string; password?: string }) => Promise<Account>;
   onLogout: () => void;
   children: ReactNode;
   overlay?: ReactNode;
@@ -93,8 +94,7 @@ export default function AppShell({
   apiError,
   actionError,
   notice,
-  username,
-  role,
+  account,
   onPageChange,
   onRangeChange,
   onMobileNavChange,
@@ -103,11 +103,14 @@ export default function AppShell({
   onExport,
   onClearActionError,
   onClearNotice,
+  onProfileUpdate,
   onLogout,
   children,
   overlay,
 }: AppShellProps) {
   const details = pageDetails[page];
+  const [profileOpen, setProfileOpen] = useState(false);
+  const { username, role } = account;
 
   return (
     <div className={tw('app-shell')}>
@@ -141,10 +144,14 @@ export default function AppShell({
             </div>
             <p>{health?.storage === 'mongodb' ? 'MongoDB đã kết nối' : 'Dữ liệu mất khi khởi động lại'}</p>
             <div className={tw('system-caption')}><span>Thông báo email</span><b>{health?.email ? 'Đã bật' : 'Chưa cấu hình'}</b></div>
+            <div className={tw('system-caption')}><span>Phân tích AI</span><b>{health?.ai ? 'Đã cấu hình' : 'Chưa cấu hình'}</b></div>
           </div>
           <div className={tw('user-card')}>
-            <span className={tw('user-avatar')}>{username.slice(0, 1).toUpperCase()}</span>
-            <span className={tw('user-name')}><small>{role === 'admin' ? 'Quản trị viên' : 'Người dùng'}</small><strong>{username}</strong></span>
+            <button className={tw('user-profile-button')} type="button" onClick={() => setProfileOpen(true)} aria-label="Xem thông tin tài khoản">
+              <span className={tw('user-avatar')}>{username.slice(0, 1).toUpperCase()}</span>
+              <span className={tw('user-name')}><small>{role === 'admin' ? 'Quản trị viên' : 'Người dùng'}</small><strong>{username}</strong></span>
+              <UserRound className={tw('user-profile-icon')} size={14} aria-hidden="true" />
+            </button>
             <button className={tw('icon-button logout-button')} type="button" title="Đăng xuất" aria-label="Đăng xuất" onClick={onLogout}>
               <LogOut size={15} />
             </button>
@@ -243,6 +250,13 @@ export default function AppShell({
         </div>
       </main>
       {overlay}
+      {profileOpen && (
+        <AccountProfileDialog
+          account={account}
+          onClose={() => setProfileOpen(false)}
+          onSave={onProfileUpdate}
+        />
+      )}
     </div>
   );
 }
@@ -263,7 +277,7 @@ const tailwindClasses: Record<string, string> = {
   'sidebar-section': 'px-[11px] pt-[31px] [&_nav]:grid [&_nav]:gap-1',
   'sidebar-label': 'mb-[11px] block px-[14px] font-mono text-[10px] font-medium tracking-[.08em] text-[#8fa1b7]',
   eyebrow: 'mb-[7px] font-mono text-[10px] font-medium tracking-[.08em] text-[#8fa1b7]',
-  'nav-item': 'flex min-h-[42px] items-center gap-[11px] rounded-[7px] border-0 bg-transparent px-[13px] text-left text-[13px] text-[#aebacd] transition-colors duration-150 hover:bg-[#29394d] hover:text-white',
+  'nav-item': 'flex min-h-[40px] items-center gap-[10px] rounded-[7px] border-0 bg-transparent px-[11px] text-left text-[11px] text-[#aebacd] transition-colors duration-150 hover:bg-[#29394d] hover:text-white',
   'nav-active': 'bg-[#0e9f93] font-semibold text-white hover:bg-[#0e9f93] hover:text-white',
   'nav-count': 'ml-auto grid h-[19px] min-w-[19px] place-items-center rounded-full bg-[#a83646] font-mono text-[10px] text-white',
   'sidebar-bottom': 'mt-auto px-[14px] pb-[19px] pt-[15px]',
@@ -273,8 +287,10 @@ const tailwindClasses: Record<string, string> = {
   'system-dot-ok': 'bg-[#45cf91] shadow-[0_0_10px_#45cf9166]',
   'system-caption': 'flex justify-between border-t border-[#2c394b] pt-[9px] text-[10px] text-[#9caabe] [&_b]:font-medium [&_b]:text-[#d5deeb]',
   'user-card': 'mt-3 flex items-center gap-2 rounded-lg border border-[#344257] bg-[#182435] p-2',
+  'user-profile-button': 'flex min-w-0 flex-1 items-center gap-2 rounded-md border-0 bg-transparent p-0 text-left hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#46a9df]',
   'user-avatar': 'grid size-8 shrink-0 place-items-center rounded-full bg-[#0e9f93] text-xs font-semibold text-white',
   'user-name': 'grid min-w-0 flex-1 [&_small]:text-[9px] [&_small]:text-[#91a1b5] [&_strong]:overflow-hidden [&_strong]:text-ellipsis [&_strong]:text-[11px] [&_strong]:text-[#e7edf6]',
+  'user-profile-icon': 'shrink-0 text-[#8292a6]',
   'logout-button': 'size-[30px] hover:bg-[#482d39] hover:text-[#ff9198]',
   'sidebar-version': 'block px-[2px] pt-[17px] text-center font-mono text-[9px] tracking-[.045em] text-[#73839a]',
   'mobile-backdrop': '!hidden max-[850px]:fixed max-[850px]:inset-0 max-[850px]:z-[30] max-[850px]:!block max-[850px]:border-0 max-[850px]:bg-[#070b13a8]',
@@ -288,7 +304,7 @@ const tailwindClasses: Record<string, string> = {
   'live-indicator': 'flex items-center gap-[7px] font-mono text-[10px] text-[#b5c1d0] [&_i]:block [&_i]:size-[7px] [&_i]:rounded-full [&_i]:bg-[#45cf91] [&_i]:shadow-[0_0_10px_#45cf9166] max-[640px]:hidden',
   'top-refresh': 'border-[#304055]',
   spin: 'animate-[spin_.9s_linear_infinite]',
-  button: 'inline-flex min-h-9 items-center justify-center gap-2 rounded-[7px] border border-transparent px-[13px] text-[12px] font-semibold transition-[filter,background] duration-150 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-55',
+  button: 'inline-flex min-h-8 items-center justify-center gap-1.5 rounded-[7px] border border-transparent px-[10px] py-1 text-[10px] font-semibold transition-[filter,background] duration-150 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-55',
   'button-primary': 'bg-[#0f9f93] text-white',
   'button-secondary': 'border-[#35445a] bg-[#202d3f] text-[#dae3ef]',
   'top-add': 'max-[640px]:min-h-[33px] max-[640px]:px-[9px] max-[640px]:text-[10px] [&_svg]:max-[640px]:w-[14px]',

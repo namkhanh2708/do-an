@@ -1,5 +1,5 @@
 import { Activity, CheckCircle2, Clock3, WifiOff, Zap } from 'lucide-react';
-import type { MonitorStatus, Report } from '../types/monitor';
+import type { Incident, MonitorStatus, Report } from '../types/monitor';
 import type { TimeRange } from '../types/app';
 import { formatPercent, statusLabel } from '../utils/format';
 
@@ -79,6 +79,79 @@ export function PerformanceChart({ data, range }: { data: Report['series']; rang
   );
 }
 
+export interface OutageSelection {
+  incidentIds: string[];
+}
+
+export function IncidentLogPanel({
+  incidents,
+  onSelect,
+}: {
+  incidents: Incident[];
+  onSelect: (selection: OutageSelection) => void;
+}) {
+  if (!incidents.length) {
+    return (
+      <div className={tw('chart-empty')}>
+        <WifiOff size={22} />
+        <span>Hiện không có website đang gặp sự cố.</span>
+      </div>
+    );
+  }
+
+  const orderedIncidents = [...incidents]
+    .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
+  const dateFormat = new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
+  const formatDuration = (milliseconds: number) => {
+    const totalMinutes = Math.max(0, Math.floor(milliseconds / 60000));
+    const days = Math.floor(totalMinutes / 1440);
+    const hours = Math.floor((totalMinutes % 1440) / 60);
+    const minutes = totalMinutes % 60;
+    if (days) return `${days} ngày ${hours} giờ`;
+    if (hours) return `${hours} giờ ${minutes} phút`;
+    return `${minutes} phút`;
+  };
+
+  return (
+    <div className={tw('incident-log-panel')}>
+      <div className={tw('incident-log-list')} role="list" aria-label="Lịch sử website gặp sự cố">
+        {orderedIncidents.map((incident) => {
+          const startedAt = new Date(incident.startedAt);
+          const endedAt = incident.resolvedAt ? new Date(incident.resolvedAt) : new Date();
+          const isOpen = incident.status === 'OPEN';
+          const durationMs = incident.durationMs ?? endedAt.getTime() - startedAt.getTime();
+          return (
+            <div key={incident.id} role="listitem">
+              <button
+                type="button"
+                className={tw(`incident-log-item ${isOpen ? 'incident-log-open' : 'incident-log-resolved'}`)}
+                onClick={() => onSelect({ incidentIds: [incident.id] })}
+                aria-label={`${incident.monitorName}, ${isOpen ? 'đang sập' : 'đã khôi phục'}, bắt đầu ${dateFormat.format(startedAt)}${incident.resolvedAt ? `, khôi phục ${dateFormat.format(endedAt)}` : ''}. Mở lịch sử sự cố`}
+              >
+                <span className={tw(`incident-log-indicator ${isOpen ? 'incident-log-indicator-open' : 'incident-log-indicator-resolved'}`)} />
+                <span className={tw('incident-log-main')}>
+                  <strong>{incident.monitorName}</strong>
+                  <small>Bắt đầu · {dateFormat.format(startedAt)}</small>
+                  {incident.resolvedAt && <small>Khôi phục · {dateFormat.format(endedAt)}</small>}
+                </span>
+                <span className={tw(`incident-log-status ${isOpen ? 'incident-log-status-open' : 'incident-log-status-resolved'}`)}>
+                  {isOpen ? 'ĐANG SẬP' : 'ĐÃ KHÔI PHỤC'}
+                </span>
+                <span className={tw('incident-log-duration')}>{formatDuration(durationMs)}</span>
+                <span className={tw('incident-log-arrow')} aria-hidden="true">›</span>
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      <div className={tw('chart-footnote')}>
+        <span><i className={tw('legend-dot legend-red')} /> Sự cố đang diễn ra</span>
+        <span><i className={tw('legend-dot legend-green')} /> Đã khôi phục · Chọn một mục để xem lịch sử</span>
+      </div>
+    </div>
+  );
+}
+
 // Biểu đồ tỷ lệ uptime và phân bố trạng thái kiểm tra.
 export function UptimeChart({ percent, up, slow, down }: { percent: number | null; up: number; slow: number; down: number }) {
   const value = percent ?? 0;
@@ -129,6 +202,20 @@ const tailwindClasses: Record<string, string> = {
   'chart-line': 'fill-none stroke-[#31a8ed] [stroke-linecap:round] [stroke-linejoin:round] [stroke-width:2.8]',
   'chart-area': 'fill-[#159bd31b]',
   'chart-point': 'fill-[#36b5fa] stroke-[#263749] [stroke-width:2]',
+  'incident-log-panel': 'mt-[15px] overflow-hidden rounded-[9px] border border-[#304257] bg-[linear-gradient(145deg,#172536,#1d2c3d)] p-[10px]',
+  'incident-log-list': 'grid max-h-[250px] gap-1.5 overflow-y-auto rounded-md pr-1 scrollbar-thin scrollbar-thumb-[#43556b] scrollbar-track-transparent',
+  'incident-log-item': 'group flex w-full items-center gap-2.5 rounded-md border border-[#314257] bg-[#1a2a3c] px-3 py-2.5 text-left transition-[background,border-color] hover:border-[#536a82] hover:bg-[#24374b] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#61a8ff]',
+  'incident-log-open': 'border-l-2 border-l-[#fb6e75]',
+  'incident-log-resolved': 'border-l-2 border-l-[#45cf91]',
+  'incident-log-indicator': 'size-2.5 shrink-0 rounded-full',
+  'incident-log-indicator-open': 'bg-[#fb6e75] shadow-[0_0_10px_#fb6e7570]',
+  'incident-log-indicator-resolved': 'bg-[#45cf91]',
+  'incident-log-main': 'grid min-w-0 flex-1 gap-1 [&_strong]:overflow-hidden [&_strong]:text-ellipsis [&_strong]:whitespace-nowrap [&_strong]:text-[11px] [&_strong]:font-semibold [&_strong]:text-[#e7edf6] [&_small]:text-[9px] [&_small]:text-[#97a8bc]',
+  'incident-log-status': 'shrink-0 rounded-full px-2 py-1 text-[8px] font-semibold tracking-[.03em] max-[500px]:hidden',
+  'incident-log-status-open': 'bg-[#472832] text-[#ff9da3]',
+  'incident-log-status-resolved': 'bg-[#203c35] text-[#68e0a9]',
+  'incident-log-duration': 'shrink-0 font-mono text-[9px] text-[#b2bfd0] max-[420px]:hidden',
+  'incident-log-arrow': 'shrink-0 text-[20px] leading-none text-[#8193a9] transition-transform group-hover:translate-x-0.5 group-hover:text-white',
   'chart-footnote': 'flex justify-between px-[5px] pb-0.5 text-[9px] text-[#9baabe] [&_span:first-child]:flex [&_span:first-child]:items-center [&_span:first-child]:gap-[6px]',
   'legend-dot': 'inline-block size-2 shrink-0 rounded-full',
   'legend-blue': 'bg-[#34aef1]',
