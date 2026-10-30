@@ -3,12 +3,21 @@ import { promisify } from 'node:util';
 import express from 'express';
 import mongoose from 'mongoose';
 import { isAdmin } from './authorization.js';
+import { getAcceptedRecipients } from './email-delivery.js';
 import { getAlertRecipients, normalizeEmailAddress } from './email-recipients.js';
 import { validatePassword, validateUsername } from './auth-validation.js';
+import {
+  generatePasswordResetCode,
+  hashPasswordResetCode,
+  passwordResetCodeMatches,
+} from './password-reset.js';
 
 const scrypt = promisify(scryptCallback);
 const sessionCookie = 'uptime_session';
 const sessionLifetimeMs = 7 * 24 * 60 * 60 * 1000;
+const passwordResetLifetimeMs = 10 * 60 * 1000;
+const passwordResetCooldownMs = 60 * 1000;
+const passwordResetMaxAttempts = 5;
 const sessions = new Map();
 
 const userSchema = new mongoose.Schema({
@@ -17,6 +26,10 @@ const userSchema = new mongoose.Schema({
   passwordSalt: { type: String, required: true, select: false },
   passwordHash: { type: String, required: true, select: false },
   email: { type: String, default: '' },
+  passwordResetCodeHash: { type: String, default: '', select: false },
+  passwordResetExpiresAt: { type: Date, default: null, select: false },
+  passwordResetRequestedAt: { type: Date, default: null, select: false },
+  passwordResetAttempts: { type: Number, default: 0, select: false },
   role: { type: String, enum: ['admin', 'user'], default: 'user' },
   isActive: { type: Boolean, default: true },
 }, { timestamps: true });
@@ -70,7 +83,7 @@ function setSessionCookie(res, token, maxAge) {
   res.setHeader('Set-Cookie', attributes.join('; '));
 }
 
-export function createAuthRouter({ isMongoConnected, onUserDeleted }) {
+export function createAuthRouter({ isMongoConnected, onUserDeleted, getMailer }) {
   const router = express.Router();
 
   async function authenticate(req, res, next) {
@@ -110,12 +123,17 @@ export function createAuthRouter({ isMongoConnected, onUserDeleted }) {
       }
 
       const { username, password } = validateCredentials(req.body);
+      const email = normalizeEmailAddress(req.body?.email);
+      if (!email) {
+        return res.status(400).json({ error: 'Vui lòng nhập địa chỉ email hợp lệ.' });
+      }
       const { salt, hash } = await hashPassword(password);
       const user = await User.create({
         username,
         usernameLower: username.toLowerCase(),
         passwordSalt: salt,
         passwordHash: hash,
+        email,
         role: 'user',
         isActive: true,
       });
@@ -152,6 +170,124 @@ export function createAuthRouter({ isMongoConnected, onUserDeleted }) {
       sessions.set(token, { userId: user._id, expiresAt: Date.now() + sessionLifetimeMs });
       setSessionCookie(res, token, Math.floor(sessionLifetimeMs / 1000));
       res.json(publicUser(user));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/forgot-password', async (req, res, next) => {
+    try {
+      if (!isMongoConnected()) {
+        return res.status(503).json({ error: 'MongoDB chưa kết nối. Không thể đặt lại mật khẩu lúc này.' });
+      }
+      const mailer = getMailer?.();
+      if (!mailer) {
+        return res.status(503).json({ error: 'Email chưa được cấu hình. Vui lòng liên hệ quản trị viên.' });
+      }
+      const email = normalizeEmailAddress(req.body?.email);
+      if (!email) {
+        return res.status(400).json({ error: 'Vui lòng nhập địa chỉ email hợp lệ.' });
+      }
+
+      const user = await User.findOne({ email }).select(
+        '+passwordResetCodeHash +passwordResetExpiresAt +passwordResetRequestedAt +passwordResetAttempts',
+      );
+      if (!user || !user.isActive) {
+        return res.status(404).json({ error: 'Email này chưa được đăng ký hoặc tài khoản không hoạt động.' });
+      }
+
+      const now = new Date();
+      if (user.passwordResetRequestedAt &&
+        now.getTime() - user.passwordResetRequestedAt.getTime() < passwordResetCooldownMs) {
+        return res.json({ message: 'Nếu email thuộc tài khoản đang hoạt động, mã xác nhận sẽ được gửi.' });
+      }
+
+      const code = generatePasswordResetCode();
+      user.passwordResetCodeHash = hashPasswordResetCode(code);
+      user.passwordResetExpiresAt = new Date(now.getTime() + passwordResetLifetimeMs);
+      user.passwordResetRequestedAt = now;
+      user.passwordResetAttempts = 0;
+      await user.save();
+
+      try {
+        const result = await mailer.sendMail({
+          from: process.env.SMTP_FROM || process.env.SMTP_USER,
+          to: user.email,
+          subject: 'Mã xác nhận đặt lại mật khẩu',
+          text: [
+            `Xin chào ${user.username},`,
+            '',
+            `Mã xác nhận đặt lại mật khẩu của bạn là: ${code}`,
+            'Mã có hiệu lực trong 10 phút và chỉ sử dụng được một lần.',
+            'Nếu bạn không yêu cầu đặt lại mật khẩu, hãy bỏ qua email này.',
+          ].join('\n'),
+        });
+        if (!getAcceptedRecipients(result, [user.email]).length) {
+          throw Object.assign(new Error('Máy chủ email không chấp nhận địa chỉ nhận mã.'), { status: 502 });
+        }
+      } catch (error) {
+        user.passwordResetCodeHash = '';
+        user.passwordResetExpiresAt = null;
+        user.passwordResetRequestedAt = null;
+        user.passwordResetAttempts = 0;
+        await user.save();
+        throw error;
+      }
+
+      res.json({ message: 'Nếu email thuộc tài khoản đang hoạt động, mã xác nhận sẽ được gửi.' });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/reset-password', async (req, res, next) => {
+    try {
+      if (!isMongoConnected()) {
+        return res.status(503).json({ error: 'MongoDB chưa kết nối. Không thể đặt lại mật khẩu lúc này.' });
+      }
+      const email = normalizeEmailAddress(req.body?.email);
+      const code = typeof req.body?.code === 'string' ? req.body.code.trim() : '';
+      const password = validatePassword(req.body?.password);
+      if (!email || !/^\d{6}$/.test(code)) {
+        return res.status(400).json({ error: 'Email hoặc mã xác nhận không hợp lệ.' });
+      }
+
+      const user = await User.findOne({ email }).select(
+        '+passwordSalt +passwordHash +passwordResetCodeHash +passwordResetExpiresAt +passwordResetAttempts',
+      );
+      const now = new Date();
+      if (!user || !user.isActive || !user.passwordResetCodeHash ||
+        !user.passwordResetExpiresAt || user.passwordResetExpiresAt <= now) {
+        return res.status(400).json({ error: 'Mã xác nhận không hợp lệ hoặc đã hết hạn. Hãy yêu cầu mã mới.' });
+      }
+
+      if (!passwordResetCodeMatches(code, user.passwordResetCodeHash)) {
+        user.passwordResetAttempts += 1;
+        if (user.passwordResetAttempts >= passwordResetMaxAttempts) {
+          user.passwordResetCodeHash = '';
+          user.passwordResetExpiresAt = null;
+          user.passwordResetRequestedAt = null;
+          user.passwordResetAttempts = 0;
+          await user.save();
+          return res.status(400).json({ error: 'Bạn đã nhập sai mã quá số lần cho phép. Hãy yêu cầu mã mới.' });
+        }
+        await user.save();
+        return res.status(400).json({ error: 'Mã xác nhận không chính xác.' });
+      }
+
+      const credentials = await hashPassword(password);
+      user.passwordSalt = credentials.salt;
+      user.passwordHash = credentials.hash;
+      user.passwordResetCodeHash = '';
+      user.passwordResetExpiresAt = null;
+      user.passwordResetRequestedAt = null;
+      user.passwordResetAttempts = 0;
+      await user.save();
+
+      for (const [token, session] of sessions) {
+        if (String(session.userId) === String(user._id)) sessions.delete(token);
+      }
+      res.json({ message: 'Đã đặt lại mật khẩu. Hãy đăng nhập bằng mật khẩu mới.' });
     } catch (error) {
       next(error);
     }

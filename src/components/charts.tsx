@@ -1,7 +1,7 @@
 import { Activity, CheckCircle2, Clock3, WifiOff, Zap } from 'lucide-react';
 import type { Incident, MonitorStatus, Report } from '../types/monitor';
 import type { TimeRange } from '../types/app';
-import { formatPercent, statusLabel } from '../utils/format';
+import { formatDuration, formatPercent, statusLabel } from '../utils/format';
 
 // Nhãn trạng thái dùng chung trong bảng và báo cáo.
 export function StatusBadge({ status }: { status: MonitorStatus }) {
@@ -90,30 +90,17 @@ export function IncidentLogPanel({
   incidents: Incident[];
   onSelect: (selection: OutageSelection) => void;
 }) {
-  if (!incidents.length) {
-    return (
-      <div className={tw('chart-empty')}>
-        <WifiOff size={22} />
-        <span>Hiện không có website đang gặp sự cố.</span>
-      </div>
-    );
-  }
-
   const orderedIncidents = [...incidents]
     .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
   const dateFormat = new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
-  const formatDuration = (milliseconds: number) => {
-    const totalMinutes = Math.max(0, Math.floor(milliseconds / 60000));
-    const days = Math.floor(totalMinutes / 1440);
-    const hours = Math.floor((totalMinutes % 1440) / 60);
-    const minutes = totalMinutes % 60;
-    if (days) return `${days} ngày ${hours} giờ`;
-    if (hours) return `${hours} giờ ${minutes} phút`;
-    return `${minutes} phút`;
-  };
-
   return (
     <div className={tw('incident-log-panel')}>
+      {orderedIncidents.length === 0 ? (
+        <div className={tw('incident-log-empty')}>
+          <WifiOff size={20} />
+          <span>Hiện không có website đang gặp sự cố.</span>
+        </div>
+      ) : (
       <div className={tw('incident-log-list')} role="list" aria-label="Lịch sử website gặp sự cố">
         {orderedIncidents.map((incident) => {
           const startedAt = new Date(incident.startedAt);
@@ -144,6 +131,7 @@ export function IncidentLogPanel({
           );
         })}
       </div>
+      )}
       <div className={tw('chart-footnote')}>
         <span><i className={tw('legend-dot legend-red')} /> Sự cố đang diễn ra</span>
         <span><i className={tw('legend-dot legend-green')} /> Đã khôi phục · Chọn một mục để xem lịch sử</span>
@@ -216,7 +204,8 @@ const tailwindClasses: Record<string, string> = {
   'incident-log-status-resolved': 'bg-[#203c35] text-[#68e0a9]',
   'incident-log-duration': 'shrink-0 font-mono text-[9px] text-[#b2bfd0] max-[420px]:hidden',
   'incident-log-arrow': 'shrink-0 text-[20px] leading-none text-[#8193a9] transition-transform group-hover:translate-x-0.5 group-hover:text-white',
-  'chart-footnote': 'flex justify-between px-[5px] pb-0.5 text-[9px] text-[#9baabe] [&_span:first-child]:flex [&_span:first-child]:items-center [&_span:first-child]:gap-[6px]',
+  'incident-log-empty': 'flex min-h-[150px] items-center justify-center gap-2 text-center text-[11px] text-[#93a4b8] [&_svg]:shrink-0 [&_svg]:text-[#77889d]',
+  'chart-footnote': 'flex justify-between px-[10px] pb-[6px] pt-[8px] text-[9px] text-[#9baabe] [&_span:first-child]:flex [&_span:first-child]:items-center [&_span:first-child]:gap-[6px]',
   'legend-dot': 'inline-block size-2 shrink-0 rounded-full',
   'legend-blue': 'bg-[#34aef1]',
   'legend-green': 'bg-[#45cf91]',

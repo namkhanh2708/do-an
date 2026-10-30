@@ -6,7 +6,7 @@ export function normalizeEmailAddress(value) {
     throw Object.assign(new Error('Địa chỉ email không hợp lệ.'), { status: 400 });
   }
   const email = value.trim().toLowerCase();
-  if (email && !EMAIL_ADDRESS_PATTERN.test(email)) {
+  if (email && (email.length > 254 || !EMAIL_ADDRESS_PATTERN.test(email))) {
     throw Object.assign(new Error('Địa chỉ email không hợp lệ.'), { status: 400 });
   }
   return email;

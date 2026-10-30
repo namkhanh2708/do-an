@@ -25,6 +25,7 @@ test('normalizes user email addresses and allows an empty optional email', () =>
   assert.equal(normalizeEmailAddress(''), '');
   assert.equal(normalizeEmailAddress(undefined), '');
   assert.throws(() => normalizeEmailAddress('invalid-address'), /Địa chỉ email không hợp lệ/);
+  assert.throws(() => normalizeEmailAddress(`${'a'.repeat(250)}@example.com`), /Địa chỉ email không hợp lệ/);
   assert.throws(() => normalizeEmailAddress(null), /Địa chỉ email không hợp lệ/);
 });
 

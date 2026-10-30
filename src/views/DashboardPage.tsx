@@ -20,7 +20,6 @@ export default function DashboardPage({
   report,
   monitors,
   incidents,
-  activeIncidents,
   loading,
   checkingId,
   setPage,
@@ -34,13 +33,13 @@ export default function DashboardPage({
 }: DashboardPageProps) {
   const enabledMonitorIds = new Set(monitors.filter((monitor) => monitor.enabled).map((monitor) => monitor.id));
   const monitoredIncidents = incidents.filter((incident) => enabledMonitorIds.has(incident.monitorId));
-  const seenOngoingMonitors = new Set<string>();
+  const seenOngoingMonitorIds = new Set<string>();
   const ongoingIncidents = monitoredIncidents
     .filter((incident) => incident.status === 'OPEN')
     .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
     .filter((incident) => {
-      if (seenOngoingMonitors.has(incident.monitorId)) return false;
-      seenOngoingMonitors.add(incident.monitorId);
+      if (seenOngoingMonitorIds.has(incident.monitorId)) return false;
+      seenOngoingMonitorIds.add(incident.monitorId);
       return true;
     });
 
@@ -49,7 +48,7 @@ export default function DashboardPage({
       <section className={tw('metric-grid')}>
         <MetricCard icon={<ShieldCheck size={17} />} label="UPTIME" value={formatPercent(report.summary.uptimePercent)} note={`${report.summary.totalChecks.toLocaleString('vi-VN')} lượt kiểm tra`} color="green" />
         <MetricCard icon={<Activity size={17} />} label="PHẢN HỒI TRUNG BÌNH" value={formatMs(report.summary.averageResponseTimeMs)} note={`Trong ${rangeLabels[range].toLowerCase()}`} color="blue" />
-        <MetricCard icon={<AlertTriangle size={17} />} label="SỰ CỐ" value={String(monitoredIncidents.length)} note={`${activeIncidents} website sập`} color="amber" />
+        <MetricCard icon={<AlertTriangle size={17} />} label="SỰ CỐ ĐANG DIỄN RA" value={String(ongoingIncidents.length)} note="Website đang gặp sự cố" color="amber" />
         <MetricCard icon={<Clock3 size={17} />} label="THỜI GIAN KHÔI PHỤC TB" value={formatDuration(report.summary.meanRecoveryTimeMs)} note="Các sự cố đã xử lý" color="purple" />
       </section>
 

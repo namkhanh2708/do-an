@@ -31,7 +31,7 @@ interface AppShellProps {
   page: Page;
   range: TimeRange;
   navigation: NavigationItem[];
-  activeIncidents: number;
+  unreadIncidentCount: number;
   enabledMonitorCount: number;
   health: ApiHealth | null;
   mobileNavOpen: boolean;
@@ -86,7 +86,7 @@ export default function AppShell({
   page,
   range,
   navigation,
-  activeIncidents,
+  unreadIncidentCount,
   enabledMonitorCount,
   health,
   mobileNavOpen,
@@ -131,7 +131,7 @@ export default function AppShell({
               >
                 <Icon size={17} />
                 <span>{label}</span>
-                {id === 'incidents' && activeIncidents > 0 && <span className={tw('nav-count')}>{activeIncidents}</span>}
+                {id === 'incidents' && page !== 'incidents' && unreadIncidentCount > 0 && <span className={tw('nav-count')}>{unreadIncidentCount}</span>}
               </button>
             ))}
           </nav>

@@ -149,15 +149,15 @@ ALERT_EMAIL=recipient@gmail.com,team@example.com
 
 Lưu lại rồi **khởi động lại backend** (`npm run dev`). Với Gmail, có thể dán App Password ở dạng chia nhóm có dấu cách; backend tự bỏ khoảng trắng trước khi xác thực SMTP. Nhập Gmail khi tạo hoặc sửa tài khoản trong trang Quản lý tài khoản. Admin đang hoạt động có Gmail sẽ nhận cảnh báo của mọi website; User đang hoạt động có Gmail chỉ nhận cảnh báo website được gán. Khi gán User vào website đang DOWN, hệ thống gửi email sự cố đang mở cho User đó. Backend gửi email ở mỗi lượt kiểm tra DOWN, bao gồm cả khi sự cố đã mở; do đó email DOWN sẽ lặp theo chu kỳ kiểm tra (1, 5 hoặc 15 phút) cho đến khi website phục hồi. Cảnh báo SLOW vẫn gửi sau mỗi 3 lượt SLOW liên tiếp và gửi email phục hồi khi website trở lại hoạt động. `ALERT_EMAIL` dùng để gửi bản sao tùy chọn ngoài danh sách người dùng. Mục “Thông báo email” ở thanh bên chỉ báo SMTP đã được cấu hình, không xác nhận máy chủ email đã chấp nhận thư.
 
-Trong bản `.env.example` hiện tại, các biến SMTP còn trống nên email **chưa gửi được cho đến khi bạn cấu hình**. Nếu sai App Password hoặc Gmail từ chối đăng nhập, xem lỗi `[alert]` trong terminal backend. Cấu hình SMTP không hợp lệ cũng có thể khiến Gmail từ chối gửi.
+Trong bản `.env.example` hiện tại, các biến SMTP còn trống nên email **chưa gửi được cho đến khi bạn cấu hình**. SMTP cũng được dùng để gửi mã quên mật khẩu 6 số; mã có hiệu lực 10 phút, tối đa 5 lần nhập. Tài khoản cần có email đã đăng ký (Admin khởi tạo từ `.env` có thể cập nhật email trong hồ sơ). Nếu sai App Password hoặc Gmail từ chối đăng nhập, xem lỗi `[alert]` trong terminal backend. Cấu hình SMTP không hợp lệ cũng có thể khiến Gmail từ chối gửi.
 
 ## API chính
 
-- `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`
+- `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/forgot-password`, `POST /api/auth/reset-password`, `POST /api/auth/logout`, `GET /api/auth/me`
 - `GET /api/auth/admin/users`, `POST /api/auth/admin/users`, `PATCH /api/auth/admin/users/:id`, `DELETE /api/auth/admin/users/:id` (Admin)
 - `GET /api/health`, `GET /api/monitors`, `POST /api/monitors` (Admin)
 - `PATCH /api/monitors/:id`, `DELETE /api/monitors/:id`
 - `POST /api/monitors/:id/check`, `GET /api/monitors/:id/checks?range=7d`
 - `GET /api/incidents?range=7d`, `GET /api/reports?range=7d&monitorId=...`
 
-Ngoại trừ `GET /api/health` và các API đăng nhập/đăng ký, API dữ liệu yêu cầu phiên đăng nhập. API quản lý website và kiểm tra thủ công yêu cầu Admin; dữ liệu đọc của User được lọc ở backend theo website đã gán. `range` hỗ trợ `1d`, `7d`, `30d`. Đây là đồ án giám sát và cảnh báo; hệ thống không tự động sửa website được theo dõi.
+Ngoại trừ `GET /api/health` và các API đăng nhập/đăng ký/đặt lại mật khẩu, API dữ liệu yêu cầu phiên đăng nhập. API quản lý website và kiểm tra thủ công yêu cầu Admin; dữ liệu đọc của User được lọc ở backend theo website đã gán. `range` hỗ trợ `1d`, `7d`, `30d`. Đây là đồ án giám sát và cảnh báo; hệ thống không tự động sửa website được theo dõi.

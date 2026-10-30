@@ -17,10 +17,14 @@ export function formatDate(value: string | null | undefined) {
 
 export function formatDuration(value: number | null | undefined) {
   if (value === null || value === undefined) return '—';
-  if (value < 60_000) return `${Math.max(1, Math.round(value / 1000))} giây`;
-  if (value < 3_600_000) return `${Math.floor(value / 60_000)} phút`;
-  const hours = Math.floor(value / 3_600_000);
-  const minutes = Math.floor((value % 3_600_000) / 60_000);
+  const totalMilliseconds = Math.max(0, value);
+  if (totalMilliseconds < 60_000) return `${Math.max(1, Math.round(totalMilliseconds / 1000))} giây`;
+  const totalMinutes = Math.floor(totalMilliseconds / 60_000);
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  if (days) return `${days} ngày ${hours} giờ ${minutes} phút`;
+  if (!hours) return `${minutes} phút`;
   return `${hours} giờ ${minutes} phút`;
 }
 

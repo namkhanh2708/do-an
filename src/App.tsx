@@ -21,6 +21,28 @@ import { emptyReport } from './utils/report';
 
 const legacySessionStorageKey = 'uptime-watch-session';
 const legacyAccountsStorageKey = 'uptime-watch-accounts';
+const incidentReadStorageKey = 'uptime-watch-read-incidents';
+
+interface IncidentReadMarker {
+  userId: string;
+  timestamp: number;
+  incidentIdsAtTimestamp: string[];
+}
+
+function loadIncidentReadMarker(userId: string): IncidentReadMarker {
+  const stored = window.localStorage.getItem(`${incidentReadStorageKey}:${userId}`);
+  if (!stored) return { userId, timestamp: 0, incidentIdsAtTimestamp: [] };
+  const [timestampValue, incidentIdsValue = ''] = stored.split('\n', 2);
+  const timestamp = Number(timestampValue);
+  if (!Number.isFinite(timestamp) || timestamp < 0) {
+    return { userId, timestamp: 0, incidentIdsAtTimestamp: [] };
+  }
+  return {
+    userId,
+    timestamp,
+    incidentIdsAtTimestamp: incidentIdsValue ? incidentIdsValue.split(',') : [],
+  };
+}
 
 // Điều phối phiên đăng nhập, dữ liệu và các thao tác chính của dashboard.
 export default function App() {
@@ -34,6 +56,11 @@ export default function App() {
   const [monitors, setMonitors] = useState<Monitor[]>([]);
   const [report, setReport] = useState<Report>(emptyReport);
   const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [incidentReadMarker, setIncidentReadMarker] = useState<IncidentReadMarker>({
+    userId: '',
+    timestamp: 0,
+    incidentIdsAtTimestamp: [],
+  });
   const [health, setHealth] = useState<ApiHealth | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -98,6 +125,10 @@ export default function App() {
 
   useEffect(() => { if (currentUser) void refresh(); }, [currentUser, refresh]);
   useEffect(() => {
+    if (currentUser) setIncidentReadMarker(loadIncidentReadMarker(currentUser.id));
+    else setIncidentReadMarker({ userId: '', timestamp: 0, incidentIdsAtTimestamp: [] });
+  }, [currentUser?.id]);
+  useEffect(() => {
     if (!currentUser) return;
     const timer = window.setInterval(() => { void refresh(true); }, 30_000);
     return () => window.clearInterval(timer);
@@ -115,6 +146,40 @@ export default function App() {
       monitors: report.monitors.filter((monitor) => monitor.id === monitorFilter),
     };
   }, [monitorFilter, report]);
+
+  function navigateToPage(nextPage: Page) {
+    if (nextPage === 'incidents' && currentUser) {
+      const marker = incidentReadMarker.userId === currentUser.id
+        ? incidentReadMarker
+        : loadIncidentReadMarker(currentUser.id);
+      const incidentTimestamps = incidents.map((incident) => ({
+        id: incident.id,
+        timestamp: new Date(incident.startedAt).getTime(),
+      })).filter((incident) => Number.isFinite(incident.timestamp));
+      const newestIncidentTimestamp = incidentTimestamps.reduce(
+        (newest, incident) => Math.max(newest, incident.timestamp),
+        0,
+      );
+      const timestamp = Math.max(marker.timestamp, newestIncidentTimestamp, incidents.length ? 0 : Date.now());
+      const incidentIdsAtTimestamp = timestamp > marker.timestamp
+        ? incidentTimestamps.filter((incident) => incident.timestamp === timestamp).map((incident) => incident.id)
+        : [
+          ...new Set([
+            ...marker.incidentIdsAtTimestamp,
+            ...incidentTimestamps
+              .filter((incident) => incident.timestamp === timestamp)
+              .map((incident) => incident.id),
+          ]),
+        ];
+      const nextMarker = { userId: currentUser.id, timestamp, incidentIdsAtTimestamp };
+      window.localStorage.setItem(
+        `${incidentReadStorageKey}:${currentUser.id}`,
+        `${timestamp}\n${incidentIdsAtTimestamp.join(',')}`,
+      );
+      setIncidentReadMarker(nextMarker);
+    }
+    setPage(nextPage);
+  }
 
   // Thêm website mới hoặc lưu cấu hình website hiện có.
   async function saveMonitor(input: MonitorInput) {
@@ -304,6 +369,13 @@ export default function App() {
   const enabledMonitorIds = new Set(monitors.filter((monitor) => monitor.enabled).map((monitor) => monitor.id));
   const activeIncidents = incidents.filter((incident) =>
     incident.status === 'OPEN' && enabledMonitorIds.has(incident.monitorId)).length;
+  const unreadIncidentCount = incidentReadMarker.userId === currentUser?.id
+    ? incidents.filter((incident) => {
+      const timestamp = new Date(incident.startedAt).getTime();
+      return timestamp > incidentReadMarker.timestamp ||
+        (timestamp === incidentReadMarker.timestamp && !incidentReadMarker.incidentIdsAtTimestamp.includes(incident.id));
+    }).length
+    : incidents.length;
 
   if (!currentUser && loading) {
     return <main className="grid min-h-screen place-items-center bg-[#101827] text-[#e6edf8]" role="status">Đang kiểm tra phiên đăng nhập…</main>;
@@ -318,7 +390,7 @@ export default function App() {
       page={page}
       range={range}
       navigation={navigation}
-      activeIncidents={activeIncidents}
+      unreadIncidentCount={unreadIncidentCount}
       enabledMonitorCount={monitors.filter((monitor) => monitor.enabled).length}
       health={health}
       mobileNavOpen={mobileNavOpen}
@@ -327,7 +399,7 @@ export default function App() {
       actionError={actionError}
       notice={notice}
       account={currentUser}
-      onPageChange={setPage}
+      onPageChange={navigateToPage}
       onRangeChange={(nextRange) => {
         setIncidentSelection(null);
         setRange(nextRange);
@@ -389,11 +461,11 @@ export default function App() {
         onOutageSelect={(selection) => {
           setIncidentSelection(selection);
           setMonitorFilter('');
-          setPage('incidents');
+          navigateToPage('incidents');
         }}
         search={search}
         checkingId={checkingId}
-        setPage={setPage}
+        setPage={navigateToPage}
         setMonitorFilter={(monitorId) => {
           setIncidentSelection(null);
           setMonitorFilter(monitorId);

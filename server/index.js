@@ -251,12 +251,12 @@ async function openIncidentFor(monitorId) {
   return memory.incidents.find((item) => item.monitorId === monitorId && item.status === 'OPEN') ?? null;
 }
 
-async function startIncident(monitor, diagnosis) {
+async function startIncident(monitor, diagnosis, startedAt) {
   const incident = {
     monitorId: monitor.id,
     monitorName: monitor.name,
     monitorUrl: monitor.url,
-    startedAt: new Date(),
+    startedAt,
     resolvedAt: null,
     status: 'OPEN',
     durationMs: null,
@@ -276,8 +276,7 @@ async function updateIncidentDiagnosis(incident, diagnosis) {
   incident.diagnosis = diagnosis;
 }
 
-async function resolveIncident(incident) {
-  const resolvedAt = new Date();
+async function resolveIncident(incident, resolvedAt) {
   const changes = {
     status: 'RESOLVED',
     resolvedAt,
@@ -292,28 +291,31 @@ async function resolveIncident(incident) {
   aiDiagnosisAttemptedMonitors.delete(incident.monitorId);
 }
 
-async function resolveOpenIncidentsFor(monitorId) {
+async function resolveOpenIncidentsFor(monitorId, resolvedAt) {
   const openIncidents = storageMode === 'mongodb'
     ? (await Incident.find({ monitorId, status: 'OPEN' })).map(serialize)
     : memory.incidents.filter((incident) => incident.monitorId === monitorId && incident.status === 'OPEN');
-  await Promise.all(openIncidents.map(resolveIncident));
+  await Promise.all(openIncidents.map((incident) => resolveIncident(incident, resolvedAt)));
   return openIncidents.length > 0;
 }
 
 async function incidentsFor({ monitorId, monitorIds, since, limit = 1000 } = {}) {
+  let incidents;
   if (storageMode === 'mongodb') {
     const filter = {};
     if (monitorId) filter.monitorId = monitorId;
     else if (monitorIds) filter.monitorId = { $in: monitorIds };
     if (since) filter.$or = [{ startedAt: { $gte: since } }, { resolvedAt: { $gte: since } }, { status: 'OPEN' }];
-    return (await Incident.find(filter).sort({ startedAt: -1 }).limit(limit)).map(serialize);
+    incidents = (await Incident.find(filter).sort({ startedAt: -1 }).limit(limit)).map(serialize);
+  } else {
+    incidents = memory.incidents
+      .filter((item) => (!monitorId || item.monitorId === monitorId) &&
+        (!monitorIds || monitorIds.includes(item.monitorId)) &&
+        (!since || item.startedAt >= since || item.resolvedAt >= since || item.status === 'OPEN'))
+      .sort((a, b) => b.startedAt - a.startedAt)
+      .slice(0, limit);
   }
-  return memory.incidents
-    .filter((item) => (!monitorId || item.monitorId === monitorId) &&
-      (!monitorIds || monitorIds.includes(item.monitorId)) &&
-      (!since || item.startedAt >= since || item.resolvedAt >= since || item.status === 'OPEN'))
-    .sort((a, b) => b.startedAt - a.startedAt)
-    .slice(0, limit);
+  return incidents.slice(0, limit);
 }
 
 function validateMonitorInput(body, current = {}) {
@@ -488,6 +490,15 @@ async function performCheck(id) {
 
     const checkedAt = new Date();
     const previousStatus = monitor.status;
+    const recentChecks = await checksFor({ monitorId: id, limit: 4 });
+    const checkData = { monitorId: id, status, responseTimeMs, httpStatus, error: errorMessage, checkedAt };
+    let diagnosis = diagnoseCheck(checkData, [checkData, ...recentChecks], monitor.slowThresholdMs);
+    let incident = null;
+    if (status === 'DOWN') {
+      slowConsecutiveCounts.set(id, 0);
+      incident = await startIncident(monitor, diagnosis, checkedAt);
+    }
+
     const updated = await updateMonitor(id, {
       status,
       lastCheckedAt: checkedAt,
@@ -495,17 +506,10 @@ async function performCheck(id) {
       lastHttpStatus: httpStatus,
       lastError: errorMessage,
     });
-    const recentChecks = await checksFor({ monitorId: id, limit: 4 });
-    const checkData = { monitorId: id, status, responseTimeMs, httpStatus, error: errorMessage, checkedAt };
-    let diagnosis = diagnoseCheck(checkData, [checkData, ...recentChecks], monitor.slowThresholdMs);
     const check = await saveCheck({ ...checkData, diagnosis });
 
     // --- Xữ lý cảnh báo & quản lý sự cố ---
     if (status === 'DOWN') {
-      // Reset bộ đếm SLOW khi DOWN
-      slowConsecutiveCounts.set(id, 0);
-      // Mỗi lượt kiểm tra DOWN được lưu thành một sự cố riêng, kể cả khi đã có sự cố đang mở.
-      const incident = await startIncident(updated, diagnosis);
       await sendAlertEmail(updated, 'down', checkedAt, { diagnosis });
 
       if (!aiDiagnosisAttemptedMonitors.has(id)) {
@@ -517,7 +521,7 @@ async function performCheck(id) {
         });
         if (aiDiagnosis) {
           diagnosis = { ...diagnosis, ...aiDiagnosis, evidence: diagnosis.evidence };
-          await updateIncidentDiagnosis(incident, diagnosis);
+          if (incident) await updateIncidentDiagnosis(incident, diagnosis);
           await updateCheckDiagnosis(check, diagnosis);
         }
       }
@@ -541,7 +545,7 @@ async function performCheck(id) {
       }
       // Nếu trước đó đang DOWN, đóng sự cố và gửi email khôi phục
       if (previousStatus === 'DOWN') {
-        await resolveOpenIncidentsFor(id);
+        await resolveOpenIncidentsFor(id, checkedAt);
         await sendAlertEmail(updated, 'recovered', checkedAt);
       }
     } else {
@@ -549,7 +553,7 @@ async function performCheck(id) {
       slowConsecutiveCounts.set(id, 0);
       // Nếu trước đó đang DOWN, đóng sự cố và gửi email khôi phục
       if (previousStatus === 'DOWN') {
-        await resolveOpenIncidentsFor(id);
+        await resolveOpenIncidentsFor(id, checkedAt);
         await sendAlertEmail(updated, 'recovered', checkedAt);
       }
     }
@@ -589,6 +593,7 @@ app.use(express.json({ limit: '20kb' }));
 const auth = createAuthRouter({
   isMongoConnected: () => storageMode === 'mongodb',
   onUserDeleted: releaseUserMonitors,
+  getMailer: () => mailer,
 });
 app.use('/api/auth', auth.router);
 
