@@ -1,10 +1,11 @@
-import { useState, type FormEvent } from 'react';
-import { AlertTriangle, HeartPulse, LogIn, UserPlus } from 'lucide-react';
+import { useEffect, useState, type FormEvent } from 'react';
+import { AlertTriangle, HeartPulse, LogIn, UserPlus, X } from 'lucide-react';
 import { api } from '../api';
 import type { Account } from '../types/monitor';
 import ForgotPasswordForm from './ForgotPasswordForm';
 
 type AuthMode = 'login' | 'register';
+type PolicySection = 'terms' | 'privacy';
 
 // Màn hình đăng nhập và đăng ký tài khoản qua backend.
 export default function AuthScreen({ onAuthenticated }: { onAuthenticated: (account: Account) => void }) {
@@ -17,6 +18,45 @@ export default function AuthScreen({ onAuthenticated }: { onAuthenticated: (acco
   const [notice, setNotice] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [activePolicy, setActivePolicy] = useState<PolicySection | null>(null);
+  const [policyContent, setPolicyContent] = useState('');
+  const [policyError, setPolicyError] = useState('');
+  const [policyLoading, setPolicyLoading] = useState(false);
+
+  useEffect(() => {
+    if (!activePolicy) return;
+    let active = true;
+    const heading = activePolicy === 'terms' ? 'Điều khoản dịch vụ' : 'Chính sách bảo mật';
+
+    setPolicyLoading(true);
+    setPolicyContent('');
+    setPolicyError('');
+    fetch('/DIEU-KHOAN-VA-CHINH-SACH.md', { cache: 'no-cache' })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`Không thể tải nội dung (HTTP ${response.status}).`);
+        return response.text();
+      })
+      .then((document) => {
+        if (active) setPolicyContent(extractPolicySection(document, heading));
+      })
+      .catch((reason: unknown) => {
+        if (active) setPolicyError(reason instanceof Error ? reason.message : 'Không thể tải nội dung.');
+      })
+      .finally(() => {
+        if (active) setPolicyLoading(false);
+      });
+
+    return () => { active = false; };
+  }, [activePolicy]);
+
+  useEffect(() => {
+    if (!activePolicy) return;
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') setActivePolicy(null);
+    }
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [activePolicy]);
 
   // Chuyển giữa biểu mẫu đăng nhập và đăng ký.
   function changeMode(nextMode: AuthMode) {
@@ -79,7 +119,7 @@ export default function AuthScreen({ onAuthenticated }: { onAuthenticated: (acco
           <span className={tw('auth-brand-mark')}><HeartPulse size={23} /></span>
           <span><strong>Uptime Watch</strong><small>Website Reliability</small></span>
         </div>
-        <p className={tw('auth-eyebrow')}>KHU VỰC QUẢN TRỊ</p>
+        <p className={tw('auth-eyebrow')}>QUẢN LÝ TRANG WEB CỦA BẠN</p>
         <h1 id="auth-title">{showForgotPassword ? 'Quên mật khẩu' : mode === 'login' ? 'Đăng nhập' : 'Tạo tài khoản'}</h1>
         <p className={tw('auth-subtitle')}>{showForgotPassword ? 'Nhận mã xác nhận qua email và tạo mật khẩu mới.' : mode === 'login' ? 'Đăng nhập để tiếp tục theo dõi website của bạn.' : 'Tạo tài khoản để sử dụng dashboard.'}</p>
 
@@ -129,10 +169,41 @@ export default function AuthScreen({ onAuthenticated }: { onAuthenticated: (acco
           )}
         </form>}
 
-        {!showForgotPassword && <p className={tw('auth-disclaimer')}>Bằng việc đăng ký hoặc đăng nhập, bạn đồng ý với <a href="/terms" target="_blank" rel="noopener noreferrer">Điều khoản dịch vụ</a> và <a href="/privacy" target="_blank" rel="noopener noreferrer">Chính sách bảo mật</a>.</p>}
+        {!showForgotPassword && <p className={tw('auth-disclaimer')}>Bằng việc đăng ký hoặc đăng nhập, bạn đồng ý với <a className={tw('auth-policy-link')} href="#terms" onClick={(event) => { event.preventDefault(); setActivePolicy('terms'); }}>Điều khoản dịch vụ</a> và <a className={tw('auth-policy-link')} href="#privacy" onClick={(event) => { event.preventDefault(); setActivePolicy('privacy'); }}>Chính sách bảo mật</a>.</p>}
       </section>
+      {activePolicy && (
+        <div className={tw('policy-backdrop')} onMouseDown={(event) => event.target === event.currentTarget && setActivePolicy(null)}>
+          <section className={tw('policy-dialog')} role="dialog" aria-modal="true" aria-labelledby="policy-title">
+            <header className={tw('policy-heading')}>
+              <h2 id="policy-title">{activePolicy === 'terms' ? 'Điều khoản dịch vụ' : 'Chính sách bảo mật'}</h2>
+              <button type="button" className={tw('policy-close')} aria-label="Đóng" onClick={() => setActivePolicy(null)}>
+                <X size={18} />
+              </button>
+            </header>
+            <div className={tw('policy-content')} aria-live="polite">
+              {policyLoading ? <p>Đang tải nội dung…</p> :
+                policyError ? <p role="alert">{policyError}</p> :
+                  policyContent ? <div className={tw('policy-text')}>{policyContent}</div> :
+                    <p>Chưa có nội dung. Hãy điền phần này trong file <code>public/DIEU-KHOAN-VA-CHINH-SACH.md</code>.</p>}
+            </div>
+          </section>
+        </div>
+      )}
     </main>
   );
+}
+
+function extractPolicySection(document: string, heading: string): string {
+  const lines = document.split(/\r?\n/);
+  const start = lines.findIndex((line) => line.trim() === `## ${heading}`);
+  if (start < 0) throw new Error(`Không tìm thấy mục "${heading}" trong file chính sách.`);
+  const end = lines.findIndex((line, index) => index > start && /^##\s/.test(line.trim()));
+  return lines
+    .slice(start + 1, end < 0 ? undefined : end)
+    .join('\n')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/^#{1,6}\s+/gm, '')
+    .trim();
 }
 
 function tw(classNames: string) {
@@ -159,4 +230,11 @@ const tailwindClasses: Record<string, string> = {
   'auth-notice': 'mb-4 rounded-md border border-[#286449] bg-[#1b342d] px-3 py-2.5 text-[11px] text-[#b4f1d0]',
   'auth-forgot-link': 'min-h-8 border-0 bg-transparent text-[10px] text-[#61a8ff] hover:text-[#9ccfff]',
   'auth-disclaimer': 'mb-0 mt-4 text-[10px] leading-[1.6] text-[#8292a7]',
+  'auth-policy-link': 'font-semibold text-[#1677d2] no-underline hover:text-[#258be8]',
+  'policy-backdrop': 'fixed inset-0 z-50 grid place-items-center bg-[#080d16b8] p-4 backdrop-blur-[4px]',
+  'policy-dialog': 'flex max-h-[85vh] w-full max-w-[640px] flex-col overflow-hidden rounded-xl border border-[#344257] bg-[#1c293a] text-[#e6edf8] shadow-[0_24px_80px_#060b1480]',
+  'policy-heading': 'flex shrink-0 items-center justify-between gap-4 border-b border-[#344257] px-5 py-4 [&_h2]:m-0 [&_h2]:text-base [&_h2]:font-semibold',
+  'policy-close': 'grid size-8 shrink-0 place-items-center rounded-md border border-[#344257] bg-[#202d3f] text-[#a8b6c9] hover:text-white',
+  'policy-content': 'overflow-y-auto px-5 py-4 text-[13px] leading-7 text-[#c9d3e0] [&_p]:m-0 [&_p]:whitespace-pre-wrap',
+  'policy-text': 'whitespace-pre-wrap break-words',
 };
