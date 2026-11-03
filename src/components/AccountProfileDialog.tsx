@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { KeyRound, UserRound, X } from 'lucide-react';
 import type { Account } from '../types/monitor';
+import { useLanguage } from '../i18n';
 
 interface AccountProfileDialogProps {
   account: Account;
@@ -9,6 +10,7 @@ interface AccountProfileDialogProps {
 }
 
 export default function AccountProfileDialog({ account, onClose, onSave }: AccountProfileDialogProps) {
+  const { t, language } = useLanguage();
   const [editing, setEditing] = useState(false);
   const [username, setUsername] = useState(account.username);
   const [email, setEmail] = useState(account.email);
@@ -37,7 +39,7 @@ export default function AccountProfileDialog({ account, onClose, onSave }: Accou
       });
       onClose();
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Không thể cập nhật thông tin tài khoản.');
+      setError(saveError instanceof Error ? t(saveError.message) : t('Không thể cập nhật thông tin tài khoản.'));
     } finally {
       setSaving(false);
     }
@@ -51,10 +53,10 @@ export default function AccountProfileDialog({ account, onClose, onSave }: Accou
         <div className={tw('profile-heading')}>
           <div className={tw('profile-heading-icon')}><UserRound size={18} /></div>
           <div className="min-w-0 flex-1">
-            <h2 id="profile-title">Thông tin tài khoản</h2>
-            <p>Xem và cập nhật thông tin cá nhân của bạn.</p>
+            <h2 id="profile-title">{t('Thông tin tài khoản')}</h2>
+            <p>{t('Xem và cập nhật thông tin cá nhân của bạn.')}</p>
           </div>
-          <button type="button" className={tw('profile-close')} aria-label="Đóng" disabled={saving} onClick={onClose}>
+          <button type="button" className={tw('profile-close')} aria-label={t('Đóng')} disabled={saving} onClick={onClose}>
             <X size={17} />
           </button>
         </div>
@@ -62,7 +64,7 @@ export default function AccountProfileDialog({ account, onClose, onSave }: Accou
         {editing ? (
           <form className={tw('profile-form')} onSubmit={(event) => void submit(event)}>
             <label>
-              Tên tài khoản
+              {t('Tên tài khoản')}
               <input
                 autoComplete="username"
                 required
@@ -72,10 +74,10 @@ export default function AccountProfileDialog({ account, onClose, onSave }: Accou
                 value={username}
                 onChange={(event) => setUsername(event.target.value)}
               />
-              <small>Từ 3–32 ký tự; chỉ gồm chữ, số, dấu chấm, gạch ngang hoặc gạch dưới.</small>
+              <small>{t('Từ 3–32 ký tự; chỉ gồm chữ, số, dấu chấm, gạch ngang hoặc gạch dưới.')}</small>
             </label>
             <label>
-              Gmail
+              {t('Gmail')}
               <input
                 type="email"
                 autoComplete="email"
@@ -85,9 +87,9 @@ export default function AccountProfileDialog({ account, onClose, onSave }: Accou
               />
             </label>
             <div className={tw('password-section')}>
-              <div className={tw('password-section-title')}><KeyRound size={14} /> Đổi mật khẩu <span>(không bắt buộc)</span></div>
+              <div className={tw('password-section-title')}><KeyRound size={14} /> {t('Đổi mật khẩu')} <span>{t('(không bắt buộc)')}</span></div>
               <label>
-                Mật khẩu hiện tại
+                {t('Mật khẩu hiện tại')}
                 <input
                   type="password"
                   autoComplete="current-password"
@@ -96,11 +98,11 @@ export default function AccountProfileDialog({ account, onClose, onSave }: Accou
                   required={Boolean(password)}
                   value={currentPassword}
                   onChange={(event) => setCurrentPassword(event.target.value)}
-                  placeholder="Cần nhập nếu đổi mật khẩu"
+                  placeholder={t('Cần nhập nếu đổi mật khẩu')}
                 />
               </label>
               <label>
-                Mật khẩu mới
+                {t('Mật khẩu mới')}
                 <input
                   type="password"
                   autoComplete="new-password"
@@ -108,35 +110,35 @@ export default function AccountProfileDialog({ account, onClose, onSave }: Accou
                   maxLength={128}
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
-                  placeholder="Để trống nếu không đổi"
+                  placeholder={t('Để trống nếu không đổi')}
                 />
               </label>
-              <small>Mật khẩu mới cần từ 6 đến 128 ký tự.</small>
+              <small>{t('Mật khẩu mới cần từ 6 đến 128 ký tự.')}</small>
             </div>
             {error && <p className={tw('profile-error')} role="alert">{error}</p>}
             <div className={tw('profile-actions')}>
               <button type="button" className={tw('profile-button profile-button-secondary')} disabled={saving} onClick={() => { setEditing(false); setError(''); setCurrentPassword(''); setPassword(''); }}>
-                Hủy
+                {t('Hủy')}
               </button>
               <button type="submit" className={tw('profile-button profile-button-primary')} disabled={saving}>
-                {saving ? 'Đang lưu…' : 'Lưu thay đổi'}
+                {t(saving ? 'Đang lưu…' : 'Lưu thay đổi')}
               </button>
             </div>
           </form>
         ) : (
           <>
             <dl className={tw('profile-details')}>
-              <div><dt>Tên tài khoản</dt><dd>{account.username}</dd></div>
-              <div><dt>Gmail</dt><dd>{account.email || 'Chưa cập nhật'}</dd></div>
-              <div><dt>Vai trò</dt><dd>{account.role === 'admin' ? 'Quản trị viên' : 'Người dùng'}</dd></div>
-              <div><dt>Trạng thái</dt><dd><span className={tw(`profile-status ${account.isActive ? 'profile-status-active' : 'profile-status-disabled'}`)}>{account.isActive ? 'Đang hoạt động' : 'Đã khóa'}</span></dd></div>
-              <div><dt>Ngày tạo</dt><dd>{Number.isNaN(createdAt.getTime()) ? 'Không xác định' : createdAt.toLocaleString('vi-VN')}</dd></div>
+              <div><dt>{t('Tên tài khoản')}</dt><dd>{account.username}</dd></div>
+              <div><dt>{t('Gmail')}</dt><dd>{account.email || t('Chưa cập nhật')}</dd></div>
+              <div><dt>{t('Vai trò')}</dt><dd>{t(account.role === 'admin' ? 'Quản trị viên' : 'Người dùng')}</dd></div>
+              <div><dt>{t('Trạng thái')}</dt><dd><span className={tw(`profile-status ${account.isActive ? 'profile-status-active' : 'profile-status-disabled'}`)}>{t(account.isActive ? 'Đang hoạt động' : 'Đã khóa')}</span></dd></div>
+              <div><dt>{t('Ngày tạo')}</dt><dd>{Number.isNaN(createdAt.getTime()) ? t('Không xác định') : createdAt.toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US')}</dd></div>
             </dl>
             {error && <p className={tw('profile-error')} role="alert">{error}</p>}
             <div className={tw('profile-actions')}>
-              <button type="button" className={tw('profile-button profile-button-secondary')} onClick={onClose}>Đóng</button>
+              <button type="button" className={tw('profile-button profile-button-secondary')} onClick={onClose}>{t('Đóng')}</button>
               <button type="button" className={tw('profile-button profile-button-primary')} onClick={() => { setUsername(account.username); setEmail(account.email); setEditing(true); }}>
-                Chỉnh sửa thông tin
+                {t('Chỉnh sửa thông tin')}
               </button>
             </div>
           </>

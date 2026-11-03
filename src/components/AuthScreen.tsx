@@ -3,12 +3,14 @@ import { AlertTriangle, HeartPulse, LogIn, UserPlus, X } from 'lucide-react';
 import { api } from '../api';
 import type { Account } from '../types/monitor';
 import ForgotPasswordForm from './ForgotPasswordForm';
+import { LanguageToggle, useLanguage } from '../i18n';
 
 type AuthMode = 'login' | 'register';
 type PolicySection = 'terms' | 'privacy';
 
 // Màn hình đăng nhập và đăng ký tài khoản qua backend.
 export default function AuthScreen({ onAuthenticated }: { onAuthenticated: (account: Account) => void }) {
+  const { t } = useLanguage();
   const [mode, setMode] = useState<AuthMode>('login');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -75,19 +77,19 @@ export default function AuthScreen({ onAuthenticated }: { onAuthenticated: (acco
     const normalizedUsername = username.trim();
 
     if (!/^[a-zA-Z0-9._-]{3,32}$/.test(normalizedUsername)) {
-      setError('Tên tài khoản cần từ 3–32 ký tự, chỉ gồm chữ, số, dấu chấm, gạch ngang hoặc gạch dưới.');
+      setError(t('Tên tài khoản cần từ 3–32 ký tự, chỉ gồm chữ, số, dấu chấm, gạch ngang hoặc gạch dưới.'));
       return;
     }
     if (mode === 'register' && !/^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(email.trim())) {
-      setError('Vui lòng nhập địa chỉ email hợp lệ.');
+      setError(t('Vui lòng nhập địa chỉ email hợp lệ.'));
       return;
     }
     if (password.length < 6 || password.length > 128) {
-      setError('Mật khẩu cần có từ 6 đến 128 ký tự.');
+      setError(t('Mật khẩu cần có từ 6 đến 128 ký tự.'));
       return;
     }
     if (mode === 'register' && password !== confirmPassword) {
-      setError('Mật khẩu xác nhận không khớp.');
+      setError(t('Mật khẩu xác nhận không khớp.'));
       return;
     }
 
@@ -100,13 +102,13 @@ export default function AuthScreen({ onAuthenticated }: { onAuthenticated: (acco
         setPassword('');
         setConfirmPassword('');
         setMode('login');
-        setNotice('Tạo tài khoản thành công. Hãy đăng nhập bằng tài khoản vừa tạo.');
+        setNotice(t('Tạo tài khoản thành công. Hãy đăng nhập bằng tài khoản vừa tạo.'));
       } else {
         const account = await api.login(normalizedUsername, password);
         onAuthenticated(account);
       }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Không thể kết nối máy chủ xác thực.');
+      setError(reason instanceof Error ? t(reason.message) : t('Không thể kết nối máy chủ xác thực.'));
     } finally {
       setSubmitting(false);
     }
@@ -115,20 +117,21 @@ export default function AuthScreen({ onAuthenticated }: { onAuthenticated: (acco
   return (
     <main className={tw('auth-page')}>
       <section className={tw('auth-card')} aria-labelledby="auth-title">
-        <div className={tw('auth-brand')}>
+        <div className={tw('auth-brand')} style={{ display: 'grid', width: '100%', gridTemplateColumns: 'auto minmax(0, 1fr) auto' }}>
           <span className={tw('auth-brand-mark')}><HeartPulse size={23} /></span>
           <span><strong>Uptime Watch</strong><small>Website Reliability</small></span>
+          <LanguageToggle />
         </div>
-        <p className={tw('auth-eyebrow')}>QUẢN LÝ TRANG WEB CỦA BẠN</p>
-        <h1 id="auth-title">{showForgotPassword ? 'Quên mật khẩu' : mode === 'login' ? 'Đăng nhập' : 'Tạo tài khoản'}</h1>
-        <p className={tw('auth-subtitle')}>{showForgotPassword ? 'Nhận mã xác nhận qua email và tạo mật khẩu mới.' : mode === 'login' ? 'Đăng nhập để tiếp tục theo dõi website của bạn.' : 'Tạo tài khoản để sử dụng dashboard.'}</p>
+        <p className={tw('auth-eyebrow')}>{t('QUẢN LÝ TRANG WEB CỦA BẠN')}</p>
+        <h1 id="auth-title">{t(showForgotPassword ? 'Quên mật khẩu' : mode === 'login' ? 'Đăng nhập' : 'Tạo tài khoản')}</h1>
+        <p className={tw('auth-subtitle')}>{t(showForgotPassword ? 'Nhận mã xác nhận qua email và tạo mật khẩu mới.' : mode === 'login' ? 'Đăng nhập để tiếp tục theo dõi website của bạn.' : 'Tạo tài khoản để sử dụng dashboard.')}</p>
 
-        {!showForgotPassword && <div className={tw('auth-tabs')} role="tablist" aria-label="Tài khoản">
+        {!showForgotPassword && <div className={tw('auth-tabs')} role="tablist" aria-label={t('Tài khoản')}>
           <button type="button" role="tab" aria-selected={mode === 'login'} className={tw(mode === 'login' ? 'auth-tab auth-tab-active' : 'auth-tab')} onClick={() => changeMode('login')}>
-            Đăng nhập
+            {t('Đăng nhập')}
           </button>
           <button type="button" role="tab" aria-selected={mode === 'register'} className={tw(mode === 'register' ? 'auth-tab auth-tab-active' : 'auth-tab')} onClick={() => changeMode('register')}>
-            Đăng ký
+            {t('Đăng ký')}
           </button>
         </div>}
 
@@ -139,52 +142,52 @@ export default function AuthScreen({ onAuthenticated }: { onAuthenticated: (acco
           <ForgotPasswordForm onBack={() => { setShowForgotPassword(false); setError(''); }} />
         ) : <form className={tw('auth-form')} onSubmit={submit} autoComplete="off">
           <label>
-            Tên tài khoản
-            <input autoComplete="username" required maxLength={32} value={username} onChange={(event) => setUsername(event.target.value)} placeholder="Nhập tên tài khoản" />
+            {t('Tên tài khoản')}
+            <input autoComplete="username" required maxLength={32} value={username} onChange={(event) => setUsername(event.target.value)} placeholder={t('Nhập tên tài khoản')} />
           </label>
           {mode === 'register' && (
             <label>
-              Email nhận thông báo
-              <input autoComplete="email" required type="email" maxLength={254} value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Nhập email của bạn" />
+              {t('Email nhận thông báo')}
+              <input autoComplete="email" required type="email" maxLength={254} value={email} onChange={(event) => setEmail(event.target.value)} placeholder={t('Nhập email của bạn')} />
             </label>
           )}
           <label>
-            Mật khẩu
-            <input autoComplete={mode === 'login' ? 'current-password' : 'off'} required type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Nhập mật khẩu" />
+            {t('Mật khẩu')}
+            <input autoComplete={mode === 'login' ? 'current-password' : 'off'} required type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder={t('Nhập mật khẩu')} />
           </label>
           {mode === 'register' && (
             <label>
-              Xác nhận mật khẩu
-              <input autoComplete="off" required type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Nhập lại mật khẩu" />
+              {t('Xác nhận mật khẩu')}
+              <input autoComplete="off" required type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder={t('Nhập lại mật khẩu')} />
             </label>
           )}
           <button className={tw('auth-submit')} type="submit" disabled={submitting}>
             {mode === 'login' ? <LogIn size={16} /> : <UserPlus size={16} />}
-            {submitting ? 'Đang xử lý…' : mode === 'login' ? 'Đăng nhập' : 'Tạo tài khoản'}
+            {t(submitting ? 'Đang xử lý…' : mode === 'login' ? 'Đăng nhập' : 'Tạo tài khoản')}
           </button>
           {mode === 'login' && (
             <button type="button" className={tw('auth-forgot-link')} onClick={() => { setShowForgotPassword(true); setError(''); setNotice(''); }}>
-              Quên mật khẩu?
+              {t('Quên mật khẩu?')}
             </button>
           )}
         </form>}
 
-        {!showForgotPassword && <p className={tw('auth-disclaimer')}>Bằng việc đăng ký hoặc đăng nhập, bạn đồng ý với <a className={tw('auth-policy-link')} href="#terms" onClick={(event) => { event.preventDefault(); setActivePolicy('terms'); }}>Điều khoản dịch vụ</a> và <a className={tw('auth-policy-link')} href="#privacy" onClick={(event) => { event.preventDefault(); setActivePolicy('privacy'); }}>Chính sách bảo mật</a>.</p>}
+        {!showForgotPassword && <p className={tw('auth-disclaimer')}>{t('Bằng việc đăng ký hoặc đăng nhập, bạn đồng ý với')} <a className={tw('auth-policy-link')} href="#terms" onClick={(event) => { event.preventDefault(); setActivePolicy('terms'); }}>{t('Điều khoản dịch vụ')}</a> {t('và')} <a className={tw('auth-policy-link')} href="#privacy" onClick={(event) => { event.preventDefault(); setActivePolicy('privacy'); }}>{t('Chính sách bảo mật')}</a>.</p>}
       </section>
       {activePolicy && (
         <div className={tw('policy-backdrop')} onMouseDown={(event) => event.target === event.currentTarget && setActivePolicy(null)}>
           <section className={tw('policy-dialog')} role="dialog" aria-modal="true" aria-labelledby="policy-title">
             <header className={tw('policy-heading')}>
-              <h2 id="policy-title">{activePolicy === 'terms' ? 'Điều khoản dịch vụ' : 'Chính sách bảo mật'}</h2>
-              <button type="button" className={tw('policy-close')} aria-label="Đóng" onClick={() => setActivePolicy(null)}>
+              <h2 id="policy-title">{t(activePolicy === 'terms' ? 'Điều khoản dịch vụ' : 'Chính sách bảo mật')}</h2>
+              <button type="button" className={tw('policy-close')} aria-label={t('Đóng')} onClick={() => setActivePolicy(null)}>
                 <X size={18} />
               </button>
             </header>
             <div className={tw('policy-content')} aria-live="polite">
-              {policyLoading ? <p>Đang tải nội dung…</p> :
-                policyError ? <p role="alert">{policyError}</p> :
+              {policyLoading ? <p>{t('Đang tải nội dung…')}</p> :
+                policyError ? <p role="alert">{t(policyError)}</p> :
                   policyContent ? <div className={tw('policy-text')}>{policyContent}</div> :
-                    <p>Chưa có nội dung. Hãy điền phần này trong file <code>public/DIEU-KHOAN-VA-CHINH-SACH.md</code>.</p>}
+                    <p>{t('Chưa có nội dung. Hãy điền phần này trong file')} <code>public/DIEU-KHOAN-VA-CHINH-SACH.md</code>.</p>}
             </div>
           </section>
         </div>

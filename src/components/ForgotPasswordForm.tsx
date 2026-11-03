@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from 'react';
 import { ArrowLeft, KeyRound, Mail, ShieldCheck } from 'lucide-react';
 import { api } from '../api';
+import { useLanguage } from '../i18n';
 
 type ResetStep = 'email' | 'code' | 'complete';
 
 export default function ForgotPasswordForm({ onBack }: { onBack: () => void }) {
+  const { t } = useLanguage();
   const [step, setStep] = useState<ResetStep>('email');
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
@@ -21,7 +23,7 @@ export default function ForgotPasswordForm({ onBack }: { onBack: () => void }) {
       await api.requestPasswordReset(email.trim());
       setStep('code');
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Không thể gửi mã xác nhận.');
+      setError(reason instanceof Error ? t(reason.message) : t('Không thể gửi mã xác nhận.'));
     } finally {
       setSubmitting(false);
     }
@@ -31,7 +33,7 @@ export default function ForgotPasswordForm({ onBack }: { onBack: () => void }) {
     event.preventDefault();
     setError('');
     if (password !== confirmPassword) {
-      setError('Mật khẩu xác nhận không khớp.');
+      setError(t('Mật khẩu xác nhận không khớp.'));
       return;
     }
     setSubmitting(true);
@@ -39,7 +41,7 @@ export default function ForgotPasswordForm({ onBack }: { onBack: () => void }) {
       await api.resetPassword(email.trim(), code.trim(), password);
       setStep('complete');
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Không thể đặt lại mật khẩu.');
+      setError(reason instanceof Error ? t(reason.message) : t('Không thể đặt lại mật khẩu.'));
     } finally {
       setSubmitting(false);
     }
@@ -50,10 +52,10 @@ export default function ForgotPasswordForm({ onBack }: { onBack: () => void }) {
       {step === 'complete' ? (
         <div className={tw('reset-complete')}>
           <ShieldCheck size={26} />
-          <strong>Đặt lại mật khẩu thành công</strong>
-          <p>Hãy đăng nhập bằng mật khẩu mới.</p>
+          <strong>{t('Đặt lại mật khẩu thành công')}</strong>
+          <p>{t('Hãy đăng nhập bằng mật khẩu mới.')}</p>
           <button type="button" className={tw('auth-submit')} onClick={onBack}>
-            <ArrowLeft size={15} /> Quay lại đăng nhập
+            <ArrowLeft size={15} /> {t('Quay lại đăng nhập')}
           </button>
         </div>
       ) : (
@@ -61,37 +63,37 @@ export default function ForgotPasswordForm({ onBack }: { onBack: () => void }) {
           {error && <div className={tw('auth-error')} role="alert">{error}</div>}
           {step === 'email' ? (
             <form className={tw('auth-form')} onSubmit={requestCode}>
-              <p className={tw('reset-help')}>Nhập email đã đăng ký. Nếu email thuộc tài khoản đang hoạt động, mã xác nhận 6 số sẽ được gửi đến bạn.</p>
+              <p className={tw('reset-help')}>{t('Nhập email đã đăng ký. Nếu email thuộc tài khoản đang hoạt động, mã xác nhận 6 số sẽ được gửi đến bạn.')}</p>
               <label>
-                Email
+                {t('Email')}
                 <input autoComplete="email" required type="email" maxLength={254} value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" />
               </label>
               <button className={tw('auth-submit')} type="submit" disabled={submitting}>
-                <Mail size={15} /> {submitting ? 'Đang gửi mã…' : 'Gửi mã xác nhận'}
+                <Mail size={15} /> {t(submitting ? 'Đang gửi mã…' : 'Gửi mã xác nhận')}
               </button>
             </form>
           ) : (
             <form className={tw('auth-form')} onSubmit={resetPassword}>
-              <p className={tw('reset-help')}>Nhập mã 6 số vừa gửi đến email (mã có hiệu lực trong 10 phút).</p>
+              <p className={tw('reset-help')}>{t('Nhập mã 6 số vừa gửi đến email (mã có hiệu lực trong 10 phút).')}</p>
               <label>
-                Mã xác nhận
+                {t('Mã xác nhận')}
                 <input required inputMode="numeric" autoComplete="one-time-code" pattern="\d{6}" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="000000" />
               </label>
               <label>
-                Mật khẩu mới
+                {t('Mật khẩu mới')}
                 <input required type="password" autoComplete="new-password" minLength={6} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Ít nhất 6 ký tự" />
               </label>
               <label>
-                Xác nhận mật khẩu mới
-                <input required type="password" autoComplete="new-password" minLength={6} maxLength={128} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Nhập lại mật khẩu mới" />
+                {t('Xác nhận mật khẩu mới')}
+                <input required type="password" autoComplete="new-password" minLength={6} maxLength={128} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder={t('Nhập lại mật khẩu mới')} />
               </label>
               <button className={tw('auth-submit')} type="submit" disabled={submitting}>
-                <KeyRound size={15} /> {submitting ? 'Đang cập nhật…' : 'Đặt lại mật khẩu'}
+                <KeyRound size={15} /> {t(submitting ? 'Đang cập nhật…' : 'Đặt lại mật khẩu')}
               </button>
             </form>
           )}
           <button type="button" className={tw('reset-back')} onClick={onBack}>
-            <ArrowLeft size={14} /> Quay lại đăng nhập
+            <ArrowLeft size={14} /> {t('Quay lại đăng nhập')}
           </button>
         </>
       )}

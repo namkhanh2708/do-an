@@ -7,6 +7,7 @@ import { formatDate, formatMs, formatPercent, statusLabel } from '../utils/forma
 import { rangeLabels } from '../utils/report';
 import { StatusBadge } from './charts';
 import { DiagnosisPanel } from './dashboard-widgets';
+import { useLanguage } from '../i18n';
 
 // Tạo mới hoặc chỉnh sửa cấu hình giám sát website.
 export function MonitorDialog({
@@ -24,6 +25,7 @@ export function MonitorDialog({
   onClose: () => void;
   onSave: (input: MonitorInput) => void;
 }) {
+  const { t } = useLanguage();
   const [name, setName] = useState(monitor?.name ?? '');
   const [url, setUrl] = useState(monitor?.url ?? '');
   const [intervalSeconds, setIntervalSeconds] = useState(monitor?.intervalSeconds ?? 60);
@@ -40,33 +42,33 @@ export function MonitorDialog({
       <section className={tw("dialog")} role="dialog" aria-modal="true" aria-labelledby="monitor-dialog-title">
         <div className={tw("dialog-heading")}>
           <div>
-            <p className={tw("eyebrow")}>CẤU HÌNH GIÁM SÁT</p>
-            <h2 id="monitor-dialog-title">{monitor ? 'Chỉnh sửa website' : 'Thêm website mới'}</h2>
+            <p className={tw("eyebrow")}>{t('CẤU HÌNH GIÁM SÁT')}</p>
+            <h2 id="monitor-dialog-title">{t(monitor ? 'Chỉnh sửa website' : 'Thêm website mới')}</h2>
           </div>
-          <button className={tw("icon-button")} type="button" aria-label="Đóng" onClick={onClose}><X size={18} /></button>
+          <button className={tw("icon-button")} type="button" aria-label={t('Đóng')} onClick={onClose}><X size={18} /></button>
         </div>
-        {error && <div className={tw("inline-error dialog-error")}><AlertTriangle size={15} />{error}</div>}
+        {error && <div className={tw("inline-error dialog-error")}><AlertTriangle size={15} />{t(error)}</div>}
         <form onSubmit={submit} className={tw("monitor-form")}>
           <label>
-            Tên website
-            <input autoFocus required maxLength={80} placeholder="Ví dụ: Trang chủ công ty" value={name} onChange={(event) => setName(event.target.value)} />
+            {t('Tên website')}
+            <input autoFocus required maxLength={80} placeholder={t('Ví dụ: Trang chủ công ty')} value={name} onChange={(event) => setName(event.target.value)} />
           </label>
           <label>
-            URL cần theo dõi
+            {t('URL cần theo dõi')}
             <input required type="url" placeholder="https://example.com" value={url} onChange={(event) => setUrl(event.target.value)} />
-            <small>Hỗ trợ HTTP/HTTPS công khai, localhost hoặc IP IPv4 riêng (mạng LAN). Địa chỉ local được truy cập từ máy chạy backend.</small>
+            <small>{t('Hỗ trợ HTTP/HTTPS công khai, localhost hoặc IP IPv4 riêng (mạng LAN). Địa chỉ local được truy cập từ máy chạy backend.')}</small>
           </label>
           <div className={tw("form-grid")}>
             <label>
-              Tần suất kiểm tra
+              {t('Tần suất kiểm tra')}
               <select value={intervalSeconds} onChange={(event) => setIntervalSeconds(Number(event.target.value))}>
-                <option value={60}>Mỗi 1 phút</option>
-                <option value={300}>Mỗi 5 phút</option>
-                <option value={900}>Mỗi 15 phút</option>
+                <option value={60}>{t('Mỗi 1 phút')}</option>
+                <option value={300}>{t('Mỗi 5 phút')}</option>
+                <option value={900}>{t('Mỗi 15 phút')}</option>
               </select>
             </label>
             <label>
-              Ngưỡng phản hồi chậm
+              {t('Ngưỡng phản hồi chậm')}
               <span className={tw("input-with-unit")}>
                 <input type="number" min={100} max={30000} step={100} value={slowThresholdMs} onChange={(event) => setSlowThresholdMs(Number(event.target.value))} required />
                 <span>ms</span>
@@ -74,20 +76,20 @@ export function MonitorDialog({
             </label>
           </div>
           <label>
-            Cho phép User theo dõi
+            {t('Cho phép User theo dõi')}
             <select value={ownerId} onChange={(event) => setOwnerId(event.target.value)}>
-              <option value="">Chỉ Admin xem được</option>
+              <option value="">{t('Chỉ Admin xem được')}</option>
               {users.filter((user) => user.role === 'user' && user.isActive).map((user) => (
                 <option key={user.id} value={user.id}>{user.username}</option>
               ))}
             </select>
-            <small>User được gán mới xem được website, lịch sử và báo cáo liên quan.</small>
+            <small>{t('User được gán mới xem được website, lịch sử và báo cáo liên quan.')}</small>
           </label>
           <div className={tw("dialog-actions")}>
-            <button type="button" className={tw("button button-quiet")} onClick={onClose}>Hủy</button>
+            <button type="button" className={tw("button button-quiet")} onClick={onClose}>{t('Hủy')}</button>
             <button type="submit" className={tw("button button-primary px-3 py-1 text-[10px] whitespace-nowrap")} disabled={saving}>
               {saving ? <LoaderCircle size={14} className={tw("spin")} /> : <Check size={14} />}
-              {monitor ? 'Lưu thay đổi' : 'Thêm website'}
+              {t(monitor ? 'Lưu thay đổi' : 'Thêm website')}
             </button>
           </div>
         </form>
@@ -106,6 +108,7 @@ export function HistoryDialog({
   range: TimeRange;
   onClose: () => void;
 }) {
+  const { t, language } = useLanguage();
   const [checks, setChecks] = useState<HealthCheck[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -124,22 +127,22 @@ export function HistoryDialog({
       <section className={tw("dialog history-dialog")} role="dialog" aria-modal="true" aria-labelledby="history-dialog-title">
         <div className={tw("dialog-heading")}>
           <div>
-            <p className={tw("eyebrow")}>LỊCH SỬ KIỂM TRA · {rangeLabels[range]}</p>
+            <p className={tw("eyebrow")}>{t('LỊCH SỬ KIỂM TRA')} · {t(rangeLabels[range])}</p>
             <h2 id="history-dialog-title">{monitor.name}</h2>
             <a className={tw("monitor-url")} href={monitor.url} target="_blank" rel="noreferrer">{monitor.url}<ExternalLink size={12} /></a>
           </div>
-          <button className={tw("icon-button")} type="button" aria-label="Đóng" onClick={onClose}><X size={18} /></button>
+          <button className={tw("icon-button")} type="button" aria-label={t('Đóng')} onClick={onClose}><X size={18} /></button>
         </div>
-        {error && <div className={tw("inline-error")}>{error}</div>}
-        {loading ? <div className={tw("loading-row")}><LoaderCircle className={tw("spin")} size={18} /> Đang tải lịch sử…</div> :
-          checks.length === 0 ? <div className={tw("empty-state compact-empty")}><History size={24} /><p>Chưa có lần kiểm tra nào trong khoảng thời gian này.</p></div> : (
+        {error && <div className={tw("inline-error")}>{t(error)}</div>}
+        {loading ? <div className={tw("loading-row")}><LoaderCircle className={tw("spin")} size={18} /> {t('Đang tải lịch sử…')}</div> :
+          checks.length === 0 ? <div className={tw("empty-state compact-empty")}><History size={24} /><p>{t('Chưa có lần kiểm tra nào trong khoảng thời gian này.')}</p></div> : (
             <div className={tw("table-scroll history-table")}>
               <table>
-                <thead><tr><th>Thời điểm</th><th>Trạng thái</th><th>HTTP</th><th>Phản hồi</th><th>Chi tiết</th></tr></thead>
+                <thead><tr><th>{t('Thời điểm')}</th><th>{t('Trạng thái')}</th><th>HTTP</th><th>{t('Phản hồi')}</th><th>{t('Chi tiết')}</th></tr></thead>
                 <tbody>
                   {checks.map((check) => (
                     <tr key={check.id}>
-                      <td>{formatDate(check.checkedAt)}</td>
+                      <td>{formatDate(check.checkedAt, language)}</td>
                       <td><StatusBadge status={check.status} /></td>
                       <td>{check.httpStatus ?? '—'}</td>
                       <td>{formatMs(check.responseTimeMs)}</td>
@@ -172,20 +175,21 @@ export function DeleteMonitorDialog({
   onClose: () => void;
   onConfirm: () => void;
 }) {
+  const { t } = useLanguage();
   return (
     <div className={tw("modal-backdrop")} onMouseDown={(event) => event.target === event.currentTarget && !deleting && onClose()}>
       <section className={tw("dialog delete-dialog")} role="alertdialog" aria-modal="true" aria-labelledby="delete-dialog-title" aria-describedby="delete-dialog-description">
         <div className={tw("delete-warning-icon")}><AlertTriangle size={21} /></div>
-        <h2 id="delete-dialog-title">Bạn có chắc chắn không?</h2>
+        <h2 id="delete-dialog-title">{t('Bạn có chắc chắn không?')}</h2>
         <p id="delete-dialog-description">
-          Bạn sắp xóa <strong>{monitor.name}</strong>. Website và toàn bộ lịch sử theo dõi (các lần kiểm tra và sự cố liên quan) sẽ bị xóa vĩnh viễn.
+          {t('Bạn sắp xóa')} <strong>{monitor.name}</strong>. {t('Website và toàn bộ lịch sử theo dõi (các lần kiểm tra và sự cố liên quan) sẽ bị xóa vĩnh viễn.')}
         </p>
-        {error && <div className={tw("inline-error dialog-error")}><AlertTriangle size={15} />{error}</div>}
+        {error && <div className={tw("inline-error dialog-error")}><AlertTriangle size={15} />{t(error)}</div>}
         <div className={tw("dialog-actions delete-dialog-actions")}>
-          <button type="button" className={tw("button button-quiet delete-cancel-button")} disabled={deleting} onClick={onClose}>Hủy</button>
+          <button type="button" className={tw("button button-quiet delete-cancel-button")} disabled={deleting} onClick={onClose}>{t('Hủy')}</button>
           <button type="button" className={tw("button button-delete inline-flex min-h-8 items-center justify-center gap-1.5 rounded-[7px] border border-transparent px-3 py-1 text-[10px] font-semibold whitespace-nowrap transition-[filter,background]")} disabled={deleting} onClick={onConfirm}>
             {deleting ? <LoaderCircle size={14} className={tw("spin")} /> : <Trash2 size={14} />}
-            {deleting ? 'Đang xóa…' : 'Xóa website và lịch sử'}
+            {deleting ? t('Đang xóa…') : t('Xóa website và lịch sử')}
           </button>
         </div>
       </section>
@@ -221,6 +225,7 @@ export function MonitorTable({
   compact?: boolean;
   readOnly?: boolean;
 }) {
+  const { t, language } = useLanguage();
   const filtered = monitors.filter((monitor) => {
     const query = search?.trim().toLowerCase();
     return !query || monitor.name.toLowerCase().includes(query) || monitor.url.toLowerCase().includes(query);
@@ -231,23 +236,23 @@ export function MonitorTable({
     <>
       {onSearch && (
         <div className={tw("table-toolbar")}>
-          <div className={tw("search-field")}><Search size={16} /><input aria-label="Tìm website" placeholder="Tìm theo tên hoặc URL…" value={search} onChange={(event) => onSearch(event.target.value)} /></div>
-          <span>{filtered.length} website</span>
+          <div className={tw("search-field")}><Search size={16} /><input aria-label={t('Tìm website')} placeholder={t('Tìm theo tên hoặc URL…')} value={search} onChange={(event) => onSearch(event.target.value)} /></div>
+          <span>{filtered.length} {t('website')}</span>
         </div>
       )}
       {filtered.length === 0 ? (
         <div className={tw("empty-state table-empty")}>
           <Globe2 size={28} />
-          <h3>{monitors.length ? 'Không tìm thấy website' : 'Chưa có website nào được theo dõi'}</h3>
-          <p>{monitors.length ? 'Thử từ khóa khác.' : 'Thêm URL công khai đầu tiên để bắt đầu theo dõi uptime và thời gian phản hồi.'}</p>
+          <h3>{t(monitors.length ? 'Không tìm thấy website' : 'Chưa có website nào được theo dõi')}</h3>
+          <p>{t(monitors.length ? 'Thử từ khóa khác.' : 'Thêm URL công khai đầu tiên để bắt đầu theo dõi uptime và thời gian phản hồi.')}</p>
         </div>
       ) : (
         <div className={tw("table-scroll")}>
           <table>
             <thead><tr>
-              <th>WEBSITE</th><th>TRẠNG THÁI</th><th>UPTIME</th><th>PHẢN HỒI</th>
-              {!compact && <th>LẦN KIỂM TRA CUỐI</th>}
-              {!readOnly && <th>HÀNH ĐỘNG</th>}
+              <th>{t('WEBSITE')}</th><th>{t('TRẠNG THÁI')}</th><th>UPTIME</th><th>{t('PHẢN HỒI')}</th>
+              {!compact && <th>{t('LẦN KIỂM TRA CUỐI')}</th>}
+              {!readOnly && <th>{t('HÀNH ĐỘNG')}</th>}
             </tr></thead>
             <tbody>
               {filtered.map((monitor) => {
@@ -260,19 +265,19 @@ export function MonitorTable({
                         <span><strong>{monitor.name}</strong><a className={tw("monitor-url")} href={monitor.url} target="_blank" rel="noreferrer">{monitor.url}<ExternalLink size={11} /></a></span>
                       </div>
                     </td>
-                    <td><div className={tw("status-cell")}><StatusBadge status={monitor.enabled ? monitor.status : 'UNKNOWN'} />{!monitor.enabled && <span className={tw("paused-label")}>Đã tắt</span>}</div></td>
+                    <td><div className={tw("status-cell")}><StatusBadge status={monitor.enabled ? monitor.status : 'UNKNOWN'} />{!monitor.enabled && <span className={tw("paused-label")}>{t('Đã tắt')}</span>}</div></td>
                     <td className={tw("number-cell")}>{formatPercent(stats?.uptimePercent ?? null)}</td>
                     <td className={tw("number-cell")}>{formatMs(monitor.lastResponseTimeMs ?? stats?.averageResponseTimeMs)}</td>
-                    {!compact && <td className={tw("date-cell")}>{formatDate(monitor.lastCheckedAt)}</td>}
+                    {!compact && <td className={tw("date-cell")}>{formatDate(monitor.lastCheckedAt, language)}</td>}
                     {!readOnly && <td>
                       <div className={tw("row-actions")}>
-                        <button className={tw("icon-button small")} title="Kiểm tra ngay" aria-label={`Kiểm tra ${monitor.name}`} disabled={checkingId === monitor.id || !monitor.enabled} onClick={() => onCheck(monitor)}>
+                        <button className={tw("icon-button small")} title={t('Kiểm tra ngay')} aria-label={`${t('Kiểm tra')} ${monitor.name}`} disabled={checkingId === monitor.id || !monitor.enabled} onClick={() => onCheck(monitor)}>
                           {checkingId === monitor.id ? <LoaderCircle size={15} className={tw("spin")} /> : <RefreshCw size={15} />}
                         </button>
-                        <button className={tw("icon-button small")} title="Lịch sử" aria-label={`Xem lịch sử ${monitor.name}`} onClick={() => onHistory(monitor)}><History size={15} /></button>
-                        <button className={tw("icon-button small")} title="Chỉnh sửa" aria-label={`Chỉnh sửa ${monitor.name}`} onClick={() => onEdit(monitor)}><Pencil size={15} /></button>
-                        <button className={tw("icon-button small")} title={monitor.enabled ? 'Tạm dừng' : 'Bật giám sát'} aria-label={monitor.enabled ? `Tạm dừng ${monitor.name}` : `Bật ${monitor.name}`} onClick={() => onToggle(monitor)}>{monitor.enabled ? <Pause size={15} /> : <Play size={15} />}</button>
-                        <button className={tw("icon-button small icon-danger")} title="Xóa website" aria-label={`Xóa ${monitor.name}`} onClick={() => onDelete(monitor)}><Trash2 size={15} /></button>
+                        <button className={tw("icon-button small")} title={t('Lịch sử')} aria-label={`${t('Xem lịch sử')} ${monitor.name}`} onClick={() => onHistory(monitor)}><History size={15} /></button>
+                        <button className={tw("icon-button small")} title={t('Chỉnh sửa')} aria-label={`${t('Chỉnh sửa')} ${monitor.name}`} onClick={() => onEdit(monitor)}><Pencil size={15} /></button>
+                        <button className={tw("icon-button small")} title={t(monitor.enabled ? 'Tạm dừng' : 'Bật giám sát')} aria-label={`${t(monitor.enabled ? 'Tạm dừng' : 'Bật')} ${monitor.name}`} onClick={() => onToggle(monitor)}>{monitor.enabled ? <Pause size={15} /> : <Play size={15} />}</button>
+                        <button className={tw("icon-button small icon-danger")} title={t('Xóa website')} aria-label={`${t('Xóa')} ${monitor.name}`} onClick={() => onDelete(monitor)}><Trash2 size={15} /></button>
                       </div>
                     </td>}
                   </tr>

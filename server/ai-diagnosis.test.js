@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { analyzeIncidentWithAI, isAiDiagnosisEnabled } from './ai-diagnosis.js';
+import { analyzeIncidentWithAI, isAiDiagnosisEnabled, translateDiagnosisToEnglish } from './ai-diagnosis.js';
 
 test('AI is disabled when no Groq API key is configured', () => {
   const originalKey = process.env.GROQ_API_KEY;
@@ -105,5 +105,56 @@ test('AI diagnosis retries Groq JSON generation failures before giving up', asyn
     globalThis.fetch = originalFetch;
     if (originalKey === undefined) delete process.env.GROQ_API_KEY;
     else process.env.GROQ_API_KEY = originalKey;
+  }
+});
+
+test('diagnosis translation returns structured English fields', async () => {
+  const originalKey = process.env.GROQ_API_KEY;
+  const originalModel = process.env.GROQ_MODEL;
+  const originalFetch = globalThis.fetch;
+  let requestBody;
+  process.env.GROQ_API_KEY = 'test-key';
+  process.env.GROQ_MODEL = 'test-model';
+  globalThis.fetch = async (_url, options) => {
+    requestBody = JSON.parse(options.body);
+    assert.equal(options.headers.authorization, 'Bearer test-key');
+    return new Response(JSON.stringify({
+      output: [{
+        content: [{
+          type: 'output_text',
+          text: JSON.stringify({
+            evidence: ['Received HTTP 503.'],
+            possibleCauses: ['The backend service may be unavailable.'],
+            recommendedActions: ['Check backend service logs.'],
+            confidenceNote: 'Confirm using server logs.',
+          }),
+        }],
+      }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+
+  try {
+    const translation = await translateDiagnosisToEnglish({
+      evidence: ['Nhận được HTTP 503.'],
+      possibleCauses: ['Backend có thể chưa sẵn sàng.'],
+      recommendedActions: ['Kiểm tra log backend.'],
+      confidenceNote: 'Cần xác nhận bằng log máy chủ.',
+    });
+
+    assert.deepEqual(translation, {
+      evidence: ['Received HTTP 503.'],
+      possibleCauses: ['The backend service may be unavailable.'],
+      recommendedActions: ['Check backend service logs.'],
+      confidenceNote: 'Confirm using server logs.',
+    });
+    assert.equal(requestBody.model, 'test-model');
+    assert.match(requestBody.input[0].content, /Translate.*Vietnamese to English/);
+    assert.match(requestBody.input[1].content, /Nhận được HTTP 503/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.GROQ_API_KEY;
+    else process.env.GROQ_API_KEY = originalKey;
+    if (originalModel === undefined) delete process.env.GROQ_MODEL;
+    else process.env.GROQ_MODEL = originalModel;
   }
 });

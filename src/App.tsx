@@ -18,6 +18,7 @@ import type { Account, ApiHealth, Incident, Monitor, MonitorInput, Report, UserR
 import type { OutageSelection } from './components/charts';
 import { formatMs, statusLabel } from './utils/format';
 import { emptyReport } from './utils/report';
+import { useLanguage } from './i18n';
 
 const legacySessionStorageKey = 'uptime-watch-session';
 const legacyAccountsStorageKey = 'uptime-watch-accounts';
@@ -46,6 +47,7 @@ function loadIncidentReadMarker(userId: string): IncidentReadMarker {
 
 // Điều phối phiên đăng nhập, dữ liệu và các thao tác chính của dashboard.
 export default function App() {
+  const { t, language } = useLanguage();
   // Khởi tạo trạng thái phiên đăng nhập trong bộ nhớ ứng dụng.
   const [currentUser, setCurrentUser] = useState<Account | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -308,7 +310,7 @@ export default function App() {
     setActionError('');
     try {
       const result = await api.checkNow(monitor.id);
-      setNotice(`${monitor.name}: ${statusLabel(result.check.status)}${result.check.responseTimeMs === null ? '' : ` · ${formatMs(result.check.responseTimeMs)}`}`);
+      setNotice(`${monitor.name}: ${statusLabel(result.check.status, language)}${result.check.responseTimeMs === null ? '' : ` · ${formatMs(result.check.responseTimeMs)}`}`);
       await refresh(true);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Không thể kiểm tra website.');
@@ -337,11 +339,11 @@ export default function App() {
       return `"${safeValue.replaceAll('"', '""')}"`;
     };
     const rows = [
-      ['Tên website', 'URL', 'Trạng thái', 'Uptime (%)', 'Phản hồi trung bình (ms)', 'Số lần kiểm tra', 'Số sự cố'],
+      [t('Tên website'), 'URL', t('Trạng thái'), 'Uptime (%)', t('Phản hồi trung bình (ms)'), t('Số lần kiểm tra'), t('Số sự cố')],
       ...selectedReport.monitors.map((monitor) => [
         monitor.name,
         monitor.url,
-        statusLabel(monitor.status),
+        statusLabel(monitor.status, language),
         monitor.uptimePercent?.toFixed(3) ?? '',
         monitor.averageResponseTimeMs?.toFixed(1) ?? '',
         String(monitor.checks),
@@ -378,7 +380,7 @@ export default function App() {
     : incidents.length;
 
   if (!currentUser && loading) {
-    return <main className="grid min-h-screen place-items-center bg-[#101827] text-[#e6edf8]" role="status">Đang kiểm tra phiên đăng nhập…</main>;
+    return <main className="grid min-h-screen place-items-center bg-[#101827] text-[#e6edf8]" role="status">{t('Đang kiểm tra phiên đăng nhập…')}</main>;
   }
 
   if (!currentUser) {

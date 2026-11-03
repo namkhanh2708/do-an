@@ -46,6 +46,7 @@ Vite và Express lắng nghe trên các giao diện mạng của máy chạy ứ
 ## Chức năng
 
 - **Dashboard:** tổng số lượt kiểm tra, uptime theo khoảng thời gian, thời gian phản hồi trung bình, số sự cố, thời gian khôi phục trung bình, danh sách sự cố cuộn theo khoảng thời gian đang chọn và trạng thái UP/SLOW/DOWN. Mỗi lượt kiểm tra ghi nhận DOWN tạo một bản ghi và email riêng, kể cả khi website vẫn đang DOWN; khi website phục hồi, tất cả bản ghi DOWN đang mở được đánh dấu đã khôi phục. Chọn một mục để mở đúng bản ghi lịch sử; danh sách tự làm mới mỗi 30 giây.
+- **Ngôn ngữ giao diện:** dùng nút EN/VN trên thanh trên cùng để đổi giữa tiếng Anh và tiếng Việt; lựa chọn được lưu trên trình duyệt. Phân tích sự cố được dịch sang tiếng Anh theo yêu cầu bằng Groq khi hiển thị; bản dịch được lưu tạm trong phiên để chuyển đổi qua lại mà không gọi AI lại.
 - **Quản lý website:** thêm, sửa, xóa URL; bật/tắt giám sát; tìm kiếm; kiểm tra thủ công; xem lịch sử từng lượt kiểm tra. Xóa website sẽ xóa cả lịch sử kiểm tra và sự cố liên quan.
 - **Tự động giám sát:** kiểm tra HTTP định kỳ mỗi 1, 5 hoặc 15 phút; ghi nhận mã HTTP, độ trễ và thời điểm; phân loại DOWN khi lỗi kết nối hoặc HTTP 4xx/5xx, SLOW khi vượt ngưỡng cấu hình, các phản hồi khác là UP.
 - **Lịch sử sự cố:** lưu một bản ghi mỗi lượt kiểm tra DOWN và cập nhật trạng thái/thời điểm phục hồi cùng thời gian gián đoạn. Khi website phục hồi, các bản ghi DOWN đang mở trong đợt đó đều được đánh dấu đã khôi phục. Khi đổi tên website, tên mới cũng được cập nhật cho toàn bộ lịch sử sự cố cũ.

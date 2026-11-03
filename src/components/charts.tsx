@@ -2,20 +2,23 @@ import { Activity, CheckCircle2, Clock3, WifiOff, Zap } from 'lucide-react';
 import type { Incident, MonitorStatus, Report } from '../types/monitor';
 import type { TimeRange } from '../types/app';
 import { formatDuration, formatPercent, statusLabel } from '../utils/format';
+import { useLanguage } from '../i18n';
 
 // Nhãn trạng thái dùng chung trong bảng và báo cáo.
 export function StatusBadge({ status }: { status: MonitorStatus }) {
+  const { language } = useLanguage();
   const Icon = status === 'UP' ? CheckCircle2 : status === 'DOWN' ? WifiOff : status === 'SLOW' ? Zap : Clock3;
   return (
     <span className={tw(`status-badge status-${status.toLowerCase()}`)}>
       <Icon size={13} />
-      {statusLabel(status)}
+      {statusLabel(status, language)}
     </span>
   );
 }
 
 // Biểu đồ thời gian phản hồi theo khoảng thời gian được chọn.
 export function PerformanceChart({ data, range }: { data: Report['series']; range: TimeRange }) {
+  const { t, language } = useLanguage();
   const values = data
     .filter((point) => point.averageResponseTimeMs !== null)
     .map((point) => point.averageResponseTimeMs as number);
@@ -24,7 +27,7 @@ export function PerformanceChart({ data, range }: { data: Report['series']; rang
     return (
       <div className={tw("chart-empty")}>
         <Activity size={22} />
-        <span>Chưa có dữ liệu phản hồi trong khoảng thời gian này.</span>
+        <span>{t('Chưa có dữ liệu phản hồi trong khoảng thời gian này.')}</span>
       </div>
     );
   }
@@ -44,7 +47,7 @@ export function PerformanceChart({ data, range }: { data: Report['series']; rang
 
   return (
     <div className={tw("chart-wrap")}>
-      <svg className={tw("line-chart")} viewBox="0 0 580 220" role="img" aria-label="Biểu đồ thời gian phản hồi">
+      <svg className={tw("line-chart")} viewBox="0 0 580 220" role="img" aria-label={t('Biểu đồ thời gian phản hồi')}>
         {[0, 1, 2, 3].map((step) => {
           const y = 38 + step * 50;
           const label = Math.round(max - (step / 3) * (max - min));
@@ -64,7 +67,7 @@ export function PerformanceChart({ data, range }: { data: Report['series']; rang
           .filter((index, position, indexes) => data.length > 1 && indexes.indexOf(index) === position)
           .map((index) => {
             const x = 46 + (index / Math.max(1, data.length - 1)) * 510;
-            const label = new Intl.DateTimeFormat('vi-VN', range === '1d'
+            const label = new Intl.DateTimeFormat(language === 'vi' ? 'vi-VN' : 'en-US', range === '1d'
               ? { hour: '2-digit', minute: '2-digit' }
               : { day: '2-digit', month: '2-digit' }).format(new Date(data[index].timestamp));
             const anchor = index === 0 ? 'start' : index === data.length - 1 ? 'end' : 'middle';
@@ -72,8 +75,8 @@ export function PerformanceChart({ data, range }: { data: Report['series']; rang
           })}
       </svg>
       <div className={tw("chart-footnote")}>
-        <span><i className={tw("legend-dot legend-blue")} /> Thời gian phản hồi trung bình</span>
-        <span>{points.length} mốc dữ liệu</span>
+        <span><i className={tw("legend-dot legend-blue")} /> {t('Thời gian phản hồi trung bình')}</span>
+        <span>{points.length} {t('mốc dữ liệu')}</span>
       </div>
     </div>
   );
@@ -90,18 +93,19 @@ export function IncidentLogPanel({
   incidents: Incident[];
   onSelect: (selection: OutageSelection) => void;
 }) {
+  const { t, language } = useLanguage();
   const orderedIncidents = [...incidents]
     .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
-  const dateFormat = new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
+  const dateFormat = new Intl.DateTimeFormat(language === 'vi' ? 'vi-VN' : 'en-US', { dateStyle: 'short', timeStyle: 'short' });
   return (
     <div className={tw('incident-log-panel')}>
       {orderedIncidents.length === 0 ? (
         <div className={tw('incident-log-empty')}>
           <WifiOff size={20} />
-          <span>Hiện không có website đang gặp sự cố.</span>
+          <span>{t('Hiện không có website đang gặp sự cố.')}</span>
         </div>
       ) : (
-      <div className={tw('incident-log-list')} role="list" aria-label="Lịch sử website gặp sự cố">
+      <div className={tw('incident-log-list')} role="list" aria-label={t('Lịch sử website gặp sự cố')}>
         {orderedIncidents.map((incident) => {
           const startedAt = new Date(incident.startedAt);
           const endedAt = incident.resolvedAt ? new Date(incident.resolvedAt) : new Date();
@@ -113,18 +117,18 @@ export function IncidentLogPanel({
                 type="button"
                 className={tw(`incident-log-item ${isOpen ? 'incident-log-open' : 'incident-log-resolved'}`)}
                 onClick={() => onSelect({ incidentIds: [incident.id] })}
-                aria-label={`${incident.monitorName}, ${isOpen ? 'đang sập' : 'đã khôi phục'}, bắt đầu ${dateFormat.format(startedAt)}${incident.resolvedAt ? `, khôi phục ${dateFormat.format(endedAt)}` : ''}. Mở lịch sử sự cố`}
+                aria-label={`${incident.monitorName}, ${isOpen ? t('đang sập') : t('đã khôi phục')}, ${t('Bắt đầu')} ${dateFormat.format(startedAt)}${incident.resolvedAt ? `, ${t('Khôi phục')} ${dateFormat.format(endedAt)}` : ''}. ${t('Mở lịch sử sự cố')}`}
               >
                 <span className={tw(`incident-log-indicator ${isOpen ? 'incident-log-indicator-open' : 'incident-log-indicator-resolved'}`)} />
                 <span className={tw('incident-log-main')}>
                   <strong>{incident.monitorName}</strong>
-                  <small>Bắt đầu · {dateFormat.format(startedAt)}</small>
-                  {incident.resolvedAt && <small>Khôi phục · {dateFormat.format(endedAt)}</small>}
+                  <small>{t('Bắt đầu')} · {dateFormat.format(startedAt)}</small>
+                  {incident.resolvedAt && <small>{t('Khôi phục')} · {dateFormat.format(endedAt)}</small>}
                 </span>
                 <span className={tw(`incident-log-status ${isOpen ? 'incident-log-status-open' : 'incident-log-status-resolved'}`)}>
-                  {isOpen ? 'ĐANG SẬP' : 'ĐÃ KHÔI PHỤC'}
+                  {t(isOpen ? 'ĐANG SẬP' : 'ĐÃ KHÔI PHỤC')}
                 </span>
-                <span className={tw('incident-log-duration')}>{formatDuration(durationMs)}</span>
+                <span className={tw('incident-log-duration')}>{formatDuration(durationMs, language)}</span>
                 <span className={tw('incident-log-arrow')} aria-hidden="true">›</span>
               </button>
             </div>
@@ -133,8 +137,8 @@ export function IncidentLogPanel({
       </div>
       )}
       <div className={tw('chart-footnote')}>
-        <span><i className={tw('legend-dot legend-red')} /> Sự cố đang diễn ra</span>
-        <span><i className={tw('legend-dot legend-green')} /> Đã khôi phục · Chọn một mục để xem lịch sử</span>
+        <span><i className={tw('legend-dot legend-red')} /> {t('Sự cố đang diễn ra')}</span>
+        <span><i className={tw('legend-dot legend-green')} /> {t('Đã khôi phục · Chọn một mục để xem lịch sử')}</span>
       </div>
     </div>
   );
@@ -142,6 +146,7 @@ export function IncidentLogPanel({
 
 // Biểu đồ tỷ lệ uptime và phân bố trạng thái kiểm tra.
 export function UptimeChart({ percent, up, slow, down }: { percent: number | null; up: number; slow: number; down: number }) {
+  const { t } = useLanguage();
   const value = percent ?? 0;
   const circumference = 2 * Math.PI * 66;
   const dash = circumference * Math.min(100, Math.max(0, value)) / 100;
@@ -164,7 +169,7 @@ export function UptimeChart({ percent, up, slow, down }: { percent: number | nul
       </svg>
       <div className={tw("uptime-legend")}>
         <span><i className={tw("legend-dot legend-green")} /> UP <b>{up}</b></span>
-        <span><i className={tw("legend-dot legend-amber")} /> Chậm <b>{slow}</b></span>
+        <span><i className={tw("legend-dot legend-amber")} /> {t('Chậm')} <b>{slow}</b></span>
         <span><i className={tw("legend-dot legend-red")} /> DOWN <b>{down}</b></span>
       </div>
     </div>

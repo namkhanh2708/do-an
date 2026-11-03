@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   AlertCircle,
   AlertTriangle,
@@ -13,7 +13,9 @@ import {
   Wrench,
 } from 'lucide-react';
 import type { Diagnosis, Incident } from '../types/monitor';
+import { translateDiagnosis } from '../api/diagnosis';
 import { formatDate, formatDuration } from '../utils/format';
+import { useLanguage } from '../i18n';
 
 // Thẻ chỉ số dùng ở Dashboard và Báo cáo.
 export function MetricCard({ icon, label, value, note, color }: { icon: ReactNode; label: string; value: string; note: string; color: string }) {
@@ -39,42 +41,106 @@ export function DiagnosisPanel({
   diagnosis?: Diagnosis | null;
   compact?: boolean;
 }) {
+  const { t, language } = useLanguage();
+  const panelRef = useRef<HTMLElement>(null);
+  const [isVisible, setIsVisible] = useState(false);
+  const [translatedDiagnosis, setTranslatedDiagnosis] = useState<Awaited<ReturnType<typeof translateDiagnosis>> | null>(null);
+  const [translationError, setTranslationError] = useState(false);
+  const [translationAttempt, setTranslationAttempt] = useState(0);
+
+  useEffect(() => {
+    if (language !== 'en' || !diagnosis || isVisible || !panelRef.current) return;
+    if (!('IntersectionObserver' in window)) {
+      setIsVisible(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        setIsVisible(true);
+        observer.disconnect();
+      }
+    }, { rootMargin: '200px' });
+    observer.observe(panelRef.current);
+    return () => observer.disconnect();
+  }, [diagnosis, isVisible, language]);
+
+  useEffect(() => {
+    if (!diagnosis || language !== 'en' || !isVisible) {
+      setTranslatedDiagnosis(null);
+      setTranslationError(false);
+      return;
+    }
+
+    let cancelled = false;
+    setTranslatedDiagnosis(null);
+    setTranslationError(false);
+    void translateDiagnosis(diagnosis)
+      .then((translation) => {
+        if (!cancelled) setTranslatedDiagnosis(translation);
+      })
+      .catch(() => {
+        if (!cancelled) setTranslationError(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [diagnosis, isVisible, language, translationAttempt]);
+
+  const displayedDiagnosis = language === 'en' ? translatedDiagnosis : diagnosis;
+  const diagnosisContent = displayedDiagnosis ?? diagnosis;
   return (
     <section
+      ref={panelRef}
       className={tw(`diagnosis-panel ${compact ? 'diagnosis-panel-compact' : ''}`)}
-      aria-label="Phân tích dấu hiệu sự cố"
+      aria-label={t('Phân tích dấu hiệu sự cố')}
     >
       <div className={tw("diagnosis-title-bar")}>
         <div className={tw("diagnosis-title-group")}>
           <Sparkles size={14} className={tw("diagnosis-sparkle-icon")} />
-          <h3>Phân tích nguyên nhân sự cố · Incident Diagnosis</h3>
+          <h3>{t('Phân tích nguyên nhân sự cố · Incident Diagnosis')}</h3>
         </div>
         <span className={tw("diagnosis-badge")}>
           {diagnosis?.source === 'ai'
-            ? 'Phân tích AI'
+            ? t('Phân tích AI')
             : diagnosis?.source === 'ai-pending'
-              ? 'Đang chờ AI'
+              ? t('Đang chờ AI')
               : diagnosis?.source === 'ai-unavailable'
-                ? 'AI chưa phân tích được'
-                : 'Chẩn đoán tự động'}
+                ? t('AI chưa phân tích được')
+                : t('Chẩn đoán tự động')}
         </span>
       </div>
 
       {!diagnosis ? (
         <div className={tw("diagnosis-empty-box")}>
           <AlertCircle size={15} />
-          <p>Chưa có dữ liệu chẩn đoán chi tiết cho lần kiểm tra này.</p>
+          <p>{t('Chưa có dữ liệu chẩn đoán chi tiết cho lần kiểm tra này.')}</p>
         </div>
-      ) : (
+      ) : language === 'en' && !displayedDiagnosis ? (
+        <div className={tw('diagnosis-translation-state')} role={translationError ? 'alert' : 'status'}>
+          {translationError ? (
+            <>
+              <p>{t('Không thể dịch phân tích sự cố sang tiếng Anh.')}</p>
+              <button type="button" className={tw('diagnosis-translation-retry')} onClick={() => setTranslationAttempt((attempt) => attempt + 1)}>
+                {t('Thử dịch lại')}
+              </button>
+            </>
+          ) : isVisible ? (
+            <><LoaderCircle size={14} className={tw('spin')} /> {t('Đang dịch phân tích sự cố…')}</>
+          ) : (
+            t('Cuộn đến đây để dịch phân tích sự cố.')
+          )}
+        </div>
+      ) : !diagnosisContent ? null : (
         <div className={tw(compact ? "diagnosis-grid-compact" : "diagnosis-grid")}>
           {/* Box 1: Dấu hiệu đã quan sát */}
           <div className={tw("diagnosis-box")}>
             <div className={tw("diagnosis-box-header")}>
               <Eye size={13} className={tw("text-[#61a8ff] shrink-0")} />
-              <h4>Dấu hiệu đã quan sát · Evidence</h4>
+              <h4>{t('Dấu hiệu đã quan sát · Evidence')}</h4>
             </div>
             <ul className={tw("diagnosis-list")}>
-              {diagnosis.evidence.map((item, index) => (
+              {diagnosisContent.evidence.map((item, index) => (
                 <li key={`${index}-${item}`}>{item}</li>
               ))}
             </ul>
@@ -86,30 +152,30 @@ export function DiagnosisPanel({
               <HelpCircle size={13} className={tw("text-[#f3c24f] shrink-0")} />
               <h4>
                 {diagnosis.source === 'ai-unavailable' || diagnosis.source === 'ai-pending'
-                  ? 'Trạng thái phân tích AI'
-                  : 'Nguyên nhân có thể · Suspected'}
+                  ? t('Trạng thái phân tích AI')
+                  : t('Nguyên nhân có thể · Suspected')}
               </h4>
             </div>
-            {diagnosis.possibleCauses.length > 0 && (
+            {diagnosisContent.possibleCauses.length > 0 && (
               <ul className={tw("diagnosis-list")}>
-                {diagnosis.possibleCauses.map((item, index) => (
+                {diagnosisContent.possibleCauses.map((item, index) => (
                   <li key={`${index}-${item}`}>{item}</li>
                 ))}
               </ul>
             )}
-            {diagnosis.confidenceNote && (
-              <p className={tw("diagnosis-note")}>{diagnosis.confidenceNote}</p>
+            {diagnosisContent.confidenceNote && (
+              <p className={tw("diagnosis-note")}>{diagnosisContent.confidenceNote}</p>
             )}
           </div>
 
           {/* Box 3: Hướng khắc phục đề xuất */}
-          {diagnosis.recommendedActions.length > 0 && <div className={tw("diagnosis-box")}>
+          {diagnosisContent.recommendedActions.length > 0 && <div className={tw("diagnosis-box")}>
             <div className={tw("diagnosis-box-header")}>
               <Wrench size={13} className={tw("text-[#45cf91] shrink-0")} />
-              <h4>Hướng xử lý đề xuất · Actions</h4>
+              <h4>{t('Hướng xử lý đề xuất · Actions')}</h4>
             </div>
             <ol className={tw("diagnosis-ordered-list")}>
-              {diagnosis.recommendedActions.map((item, index) => (
+              {diagnosisContent.recommendedActions.map((item, index) => (
                 <li key={`${index}-${item}`}>{item}</li>
               ))}
             </ol>
@@ -122,10 +188,11 @@ export function DiagnosisPanel({
 
 // Tóm tắt một sự cố đang mở hoặc đã được khôi phục.
 export function IncidentRow({ incident, detailed = false }: { incident: Incident; detailed?: boolean }) {
+  const { t, language } = useLanguage();
   const isOpen = incident.status === 'OPEN';
   const duration = incident.durationMs != null
-    ? formatDuration(incident.durationMs)
-    : formatDuration(Date.now() - new Date(incident.startedAt).getTime());
+    ? formatDuration(incident.durationMs, language)
+    : formatDuration(Date.now() - new Date(incident.startedAt).getTime(), language);
 
   return (
     <article
@@ -142,7 +209,7 @@ export function IncidentRow({ incident, detailed = false }: { incident: Incident
           <div className={tw("incident-title-line")}>
             <strong className={tw("incident-name")}>{incident.monitorName}</strong>
             <span className={tw(`incident-state ${isOpen ? 'state-open' : 'state-resolved'}`)}>
-              {isOpen ? 'ĐANG DIỄN RA' : 'ĐÃ KHÔI PHỤC'}
+              {t(isOpen ? 'ĐANG DIỄN RA' : 'ĐÃ KHÔI PHỤC')}
             </span>
           </div>
 
@@ -154,9 +221,9 @@ export function IncidentRow({ incident, detailed = false }: { incident: Incident
           {detailed && (
             <p className={tw(`incident-detail ${isOpen ? 'detail-open' : 'detail-resolved'}`)}>
               {isOpen ? (
-                <>Website hiện vẫn chưa phản hồi · Đang gián đoạn {duration}</>
+                <>{t('Website hiện vẫn chưa phản hồi · Đang gián đoạn')} {duration}</>
               ) : (
-                <>Thời gian gián đoạn: <strong>{duration}</strong></>
+                <>{t('Thời gian gián đoạn:')} <strong>{duration}</strong></>
               )}
             </p>
           )}
@@ -165,7 +232,7 @@ export function IncidentRow({ incident, detailed = false }: { incident: Incident
         <div className={tw("incident-times")}>
           <div className={tw("incident-time-entry")}>
             <AlertTriangle size={13} className={tw("time-icon-alert")} />
-            <span>Bắt đầu {formatDate(incident.startedAt)}</span>
+            <span>{t('Bắt đầu')} {formatDate(incident.startedAt, language)}</span>
           </div>
           <div className={tw("incident-time-entry")}>
             {isOpen ? (
@@ -175,8 +242,8 @@ export function IncidentRow({ incident, detailed = false }: { incident: Incident
             )}
             <span className={tw(isOpen ? "time-text-open" : "time-text-resolved")}>
               {incident.resolvedAt
-                ? `Khôi phục ${formatDate(incident.resolvedAt)}`
-                : `Đang gián đoạn · ${duration}`}
+                ? `${t('Khôi phục')} ${formatDate(incident.resolvedAt, language)}`
+                : `${t('Đang gián đoạn ·')} ${duration}`}
             </span>
           </div>
         </div>
@@ -189,7 +256,8 @@ export function IncidentRow({ incident, detailed = false }: { incident: Incident
 
 // Trạng thái chờ dữ liệu của các bảng.
 export function LoadingRow() {
-  return <div className={tw("loading-row")}><LoaderCircle size={18} className={tw("spin")} /> Đang tải dữ liệu…</div>;
+  const { t } = useLanguage();
+  return <div className={tw("loading-row")}><LoaderCircle size={18} className={tw("spin")} /> {t('Đang tải dữ liệu…')}</div>;
 }
 
 // Biểu tượng trợ giúp về trạng thái hệ thống.
@@ -257,6 +325,8 @@ const tailwindClasses: Record<string, string> = {
   'diagnosis-sparkle-icon': 'text-[#61a8ff] shrink-0',
   'diagnosis-badge': 'rounded-full bg-[#1e2f46] border border-[#354862] px-2.5 py-0.5 font-mono text-[9px] text-[#9bb0c7]',
   'diagnosis-empty-box': 'flex items-center gap-2 py-2 text-[11px] text-[#8fa0b5] [&_svg]:text-[#61a8ff] [&_p]:m-0',
+  'diagnosis-translation-state': 'flex min-h-20 items-center justify-center gap-2 py-5 text-[11px] text-[#9bb0c7] [&_p]:m-0',
+  'diagnosis-translation-retry': 'rounded-md border border-[#354862] bg-[#1e2f46] px-3 py-1.5 text-[10px] font-semibold text-[#dce5f1] hover:bg-[#29394d]',
   'diagnosis-grid': 'grid grid-cols-1 min-[850px]:grid-cols-3 gap-3.5',
   'diagnosis-grid-compact': 'grid grid-cols-1 gap-2.5',
   'diagnosis-box': 'flex flex-col rounded-lg border border-[#2b3a4e] bg-[#172538] p-3 text-[11px] leading-relaxed text-[#c3d0df]',

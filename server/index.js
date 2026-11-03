@@ -9,7 +9,7 @@ import express from 'express';
 import mongoose from 'mongoose';
 import nodemailer from 'nodemailer';
 import { collectEvidence } from './diagnosis.js';
-import { analyzeIncidentWithAI, isAiDiagnosisEnabled } from './ai-diagnosis.js';
+import { analyzeIncidentWithAI, isAiDiagnosisEnabled, translateDiagnosisToEnglish } from './ai-diagnosis.js';
 import { createAuthRouter } from './auth.js';
 import { canViewMonitor, isAdmin, visibleMonitors } from './authorization.js';
 import { getAcceptedRecipients, getPendingRecipients } from './email-delivery.js';
@@ -620,6 +620,34 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.use('/api', auth.authenticate);
+
+app.post('/api/diagnosis/translate', async (req, res, next) => {
+  try {
+    if (!isAiDiagnosisEnabled()) {
+      return res.status(503).json({ error: 'Dịch AI chưa được cấu hình.' });
+    }
+
+    const body = req.body;
+    const fields = ['evidence', 'possibleCauses', 'recommendedActions'];
+    if (!body || typeof body !== 'object' || Array.isArray(body) ||
+      typeof body.confidenceNote !== 'string' || body.confidenceNote.length > 1000 ||
+      fields.some((field) => !Array.isArray(body[field]) ||
+        body[field].length > (field === 'evidence' ? 6 : field === 'possibleCauses' ? 5 : 6) ||
+        body[field].some((item) => typeof item !== 'string' || item.length > 1000))) {
+      return res.status(400).json({ error: 'Nội dung phân tích cần dịch không hợp lệ.' });
+    }
+
+    const totalLength = body.confidenceNote.length +
+      fields.reduce((total, field) => total + body[field].reduce((length, item) => length + item.length, 0), 0);
+    if (totalLength > 5000) {
+      return res.status(400).json({ error: 'Nội dung phân tích cần dịch quá dài.' });
+    }
+
+    res.json(await translateDiagnosisToEnglish(body));
+  } catch (error) {
+    next(error);
+  }
+});
 
 app.get('/api/monitors', async (req, res, next) => {
   try {

@@ -18,6 +18,7 @@ import {
 import type { Account, ApiHealth } from '../types/monitor';
 import type { Page, TimeRange } from '../types/app';
 import { rangeLabels } from '../utils/report';
+import { LanguageToggle, useLanguage } from '../i18n';
 import { CircleHelpIcon } from './dashboard-widgets';
 import AccountProfileDialog from './AccountProfileDialog';
 
@@ -57,7 +58,7 @@ interface AppShellProps {
 const pageDetails: Record<Page, { eyebrow: string; title: string; subtitle: string }> = {
   dashboard: {
     eyebrow: 'TỔNG QUAN HỆ THỐNG',
-    title: 'Dashboard',
+    title: 'Tổng quan',
     subtitle: 'Tình trạng website và hiệu suất trong nháy mắt.',
   },
   monitors: {
@@ -108,7 +109,13 @@ export default function AppShell({
   children,
   overlay,
 }: AppShellProps) {
-  const details = pageDetails[page];
+  const { t } = useLanguage();
+  const pageInfo = pageDetails[page];
+  const details = {
+    eyebrow: t(pageInfo.eyebrow),
+    title: t(pageInfo.title),
+    subtitle: t(pageInfo.subtitle),
+  };
   const [profileOpen, setProfileOpen] = useState(false);
   const { username, role } = account;
 
@@ -121,7 +128,7 @@ export default function AppShell({
           <span><strong>Uptime Watch</strong><small>Website Reliability</small></span>
         </a>
         <div className={tw('sidebar-section')}>
-          <span className={tw('sidebar-label')}>GIÁM SÁT</span>
+          <span className={tw('sidebar-label')}>{t('GIÁM SÁT')}</span>
           <nav>
             {navigation.map(({ id, label, icon: Icon }) => (
               <button
@@ -130,7 +137,7 @@ export default function AppShell({
                 onClick={() => { onPageChange(id); onMobileNavChange(false); }}
               >
                 <Icon size={17} />
-                <span>{label}</span>
+                <span>{t(label)}</span>
                 {id === 'incidents' && page !== 'incidents' && unreadIncidentCount > 0 && <span className={tw('nav-count')}>{unreadIncidentCount}</span>}
               </button>
             ))}
@@ -140,19 +147,19 @@ export default function AppShell({
           <div className={tw('system-card')}>
             <div className={tw('system-title')}>
               <span className={tw(`system-dot ${health?.storage === 'mongodb' ? 'system-dot-ok' : ''}`)} />
-              {health?.storage === 'mongodb' ? 'Hệ thống sẵn sàng' : 'Chế độ RAM'}
+              {t(health?.storage === 'mongodb' ? 'Hệ thống sẵn sàng' : 'Chế độ RAM')}
             </div>
-            <p>{health?.storage === 'mongodb' ? 'MongoDB đã kết nối' : 'Dữ liệu mất khi khởi động lại'}</p>
-            <div className={tw('system-caption')}><span>Thông báo email</span><b>{health?.email ? 'Đã bật' : 'Chưa cấu hình'}</b></div>
-            <div className={tw('system-caption')}><span>Phân tích AI</span><b>{health?.ai ? 'Đã cấu hình' : 'Chưa cấu hình'}</b></div>
+            <p>{t(health?.storage === 'mongodb' ? 'MongoDB đã kết nối' : 'Dữ liệu mất khi khởi động lại')}</p>
+            <div className={tw('system-caption')}><span>{t('Thông báo email')}</span><b>{t(health?.email ? 'Đã bật' : 'Chưa cấu hình')}</b></div>
+            <div className={tw('system-caption')}><span>{t('Phân tích AI')}</span><b>{t(health?.ai ? 'Đã cấu hình' : 'Chưa cấu hình')}</b></div>
           </div>
           <div className={tw('user-card')}>
-            <button className={tw('user-profile-button')} type="button" onClick={() => setProfileOpen(true)} aria-label="Xem thông tin tài khoản">
+            <button className={tw('user-profile-button')} type="button" onClick={() => setProfileOpen(true)} aria-label={t('Xem thông tin tài khoản')}>
               <span className={tw('user-avatar')}>{username.slice(0, 1).toUpperCase()}</span>
-              <span className={tw('user-name')}><small>{role === 'admin' ? 'Quản trị viên' : 'Người dùng'}</small><strong>{username}</strong></span>
+              <span className={tw('user-name')}><small>{t(role === 'admin' ? 'Quản trị viên' : 'Người dùng')}</small><strong>{username}</strong></span>
               <UserRound className={tw('user-profile-icon')} size={14} aria-hidden="true" />
             </button>
-            <button className={tw('icon-button logout-button')} type="button" title="Đăng xuất" aria-label="Đăng xuất" onClick={onLogout}>
+            <button className={tw('icon-button logout-button')} type="button" title={t('Đăng xuất')} aria-label={t('Đăng xuất')} onClick={onLogout}>
               <LogOut size={15} />
             </button>
           </div>
@@ -162,7 +169,7 @@ export default function AppShell({
       {mobileNavOpen && (
         <button
           className={tw('mobile-backdrop')}
-          aria-label="Đóng menu"
+          aria-label={t('Đóng menu')}
           onClick={() => onMobileNavChange(false)}
         />
       )}
@@ -170,21 +177,22 @@ export default function AppShell({
       <main className={tw('main-area')}>
         {/* Thanh công cụ, bộ lọc thời gian và tiêu đề màn hình. */}
         <header className={tw('topbar')}>
-          <button className={tw('icon-button mobile-menu')} aria-label="Mở menu" onClick={() => onMobileNavChange(true)}>
+          <button className={tw('icon-button mobile-menu')} aria-label={t('Mở menu')} onClick={() => onMobileNavChange(true)}>
             <Menu size={19} />
           </button>
           <div className={tw('breadcrumb')}>
             <span>Uptime Watch</span>
             <span className={tw('breadcrumb-divider')}>/</span>
-            <strong>{navigation.find((item) => item.id === page)?.label}</strong>
+            <strong>{t(navigation.find((item) => item.id === page)?.label ?? '')}</strong>
           </div>
           <div className={tw('topbar-actions')}>
             <span className={tw('live-indicator')}><i /> LIVE</span>
-            <button className={tw('icon-button top-refresh')} title="Làm mới dữ liệu" onClick={onRefresh} disabled={refreshing}>
+            <LanguageToggle />
+            <button className={tw('icon-button top-refresh')} title={t('Làm mới dữ liệu')} onClick={onRefresh} disabled={refreshing}>
               {refreshing ? <LoaderCircle className={tw('spin')} size={17} /> : <RefreshCw size={17} />}
             </button>
             {role === 'admin' && <button className={tw('button button-primary top-add')} onClick={onCreateMonitor}>
-              <Plus size={16} /> Thêm website
+              <Plus size={16} /> {t('Thêm website')}
             </button>}
           </div>
         </header>
@@ -194,24 +202,24 @@ export default function AppShell({
           {apiError && (
             <div className={tw('connection-banner')}>
               <WifiOff size={17} />
-              <span><strong>Không kết nối được backend.</strong> {apiError} Hãy chạy <code>npm run dev</code> để khởi động cả giao diện và API.</span>
+              <span><strong>{t('Không kết nối được backend.')}</strong> {t(apiError)} {t('Hãy chạy')} <code>npm run dev</code> {t('để khởi động cả giao diện và API.')}</span>
             </div>
           )}
           {health?.storage === 'memory' && (
             <div className={tw('storage-banner')}>
-              <CircleHelpIcon /> MongoDB chưa kết nối — dữ liệu hiện lưu tạm trong bộ nhớ và sẽ mất khi máy chủ khởi động lại.
+              <CircleHelpIcon /> {t('MongoDB chưa kết nối — dữ liệu hiện lưu tạm trong bộ nhớ và sẽ mất khi máy chủ khởi động lại.')}
             </div>
           )}
           {actionError && (
             <div className={tw('inline-error')}>
-              <AlertTriangle size={16} />{actionError}
-              <button aria-label="Đóng thông báo" onClick={onClearActionError}><X size={15} /></button>
+              <AlertTriangle size={16} />{t(actionError)}
+              <button aria-label={t('Đóng thông báo')} onClick={onClearActionError}><X size={15} /></button>
             </div>
           )}
           {notice && (
             <div className={tw('toast-message')}>
-              <CheckCircle2 size={16} />{notice}
-              <button aria-label="Đóng thông báo" onClick={onClearNotice}><X size={15} /></button>
+              <CheckCircle2 size={16} />{t(notice)}
+              <button aria-label={t('Đóng thông báo')} onClick={onClearNotice}><X size={15} /></button>
             </div>
           )}
 
@@ -225,18 +233,18 @@ export default function AppShell({
               <label className={tw('range-select')}>
                 <Clock3 size={15} />
                 <select
-                  aria-label="Khoảng thời gian"
+                  aria-label={t('Khoảng thời gian')}
                   value={range}
                   onChange={(event) => onRangeChange(event.target.value as TimeRange)}
                 >
                   {Object.entries(rangeLabels).map(([key, label]) => (
-                    <option key={key} value={key}>{label}</option>
+                    <option key={key} value={key}>{t(label)}</option>
                   ))}
                 </select>
               </label>
               {(page === 'reports' || page === 'dashboard') && (
                 <button className={tw('button button-secondary export-button')} onClick={onExport}>
-                  <Download size={15} /> Xuất CSV
+                  <Download size={15} /> {t('Xuất CSV')}
                 </button>
               )}
             </div>
@@ -245,7 +253,7 @@ export default function AppShell({
           {children}
           <footer className={tw('page-footer')}>
             <span>Uptime Watch</span>
-            <span>Đang theo dõi {enabledMonitorCount} website · Tự làm mới mỗi 30 giây</span>
+            <span>{t('Đang theo dõi')} {enabledMonitorCount} {t('website · Tự làm mới mỗi 30 giây')}</span>
           </footer>
         </div>
       </main>
