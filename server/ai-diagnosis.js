@@ -13,16 +13,41 @@ export function isAiDiagnosisEnabled() {
   return Boolean(process.env.GROQ_API_KEY);
 }
 
+async function fetchWithDiagnosisRetries(url, options) {
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    try {
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      if (response.ok || attempt === 3) return response;
+
+      const body = await response.clone().json().catch(() => null);
+      const message = body?.error?.message || '';
+      const retryable = response.status === 429 ||
+        response.status >= 500 ||
+        /failed to generate json/i.test(message);
+      if (!retryable) return response;
+      lastError = new Error(message || `Groq API trả về HTTP ${response.status}.`);
+    } catch (error) {
+      lastError = error;
+      if (attempt === 3) throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 300 * attempt));
+  }
+  throw lastError;
+}
+
 export async function analyzeIncidentWithAI({ monitor, check, recentChecks }) {
   if (!isAiDiagnosisEnabled()) return null;
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15_000);
   const hostname = new URL(monitor.url).hostname;
   try {
-    const response = await fetch('https://api.groq.com/openai/v1/responses', {
+    const response = await fetchWithDiagnosisRetries('https://api.groq.com/openai/v1/responses', {
       method: 'POST',
-      signal: controller.signal,
       headers: {
         authorization: `Bearer ${process.env.GROQ_API_KEY}`,
         'content-type': 'application/json',
@@ -34,7 +59,7 @@ export async function analyzeIncidentWithAI({ monitor, check, recentChecks }) {
         input: [
           {
             role: 'system',
-            content: 'Bạn là chuyên gia SRE. Phân tích sự cố website chỉ từ dữ liệu được cung cấp. Không khẳng định nguyên nhân nếu chưa đủ bằng chứng; đưa ra các bước khắc phục cụ thể, an toàn, ưu tiên kiểm tra trước khi thay đổi hệ thống. Trả lời bằng tiếng Việt.',
+            content: 'Bạn là chuyên gia SRE. Phân tích sự cố website chỉ từ dữ liệu được cung cấp. Viết toàn bộ nội dung trong possibleCauses, recommendedActions và confidenceNote bằng tiếng Việt; chỉ giữ nguyên các thuật ngữ kỹ thuật, tên giao thức, mã lỗi và tên dịch vụ khi cần thiết. Không khẳng định nguyên nhân nếu chưa đủ bằng chứng; đưa ra các bước khắc phục cụ thể, an toàn, ưu tiên kiểm tra trước khi thay đổi hệ thống.',
           },
           {
             role: 'user',
@@ -94,7 +119,5 @@ export async function analyzeIncidentWithAI({ monitor, check, recentChecks }) {
   } catch (error) {
     console.error('[ai-diagnosis] Không thể phân tích sự cố:', error.message);
     return null;
-  } finally {
-    clearTimeout(timeout);
   }
 }

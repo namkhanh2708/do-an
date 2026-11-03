@@ -43,7 +43,7 @@ export interface Diagnosis {
   possibleCauses: string[];
   recommendedActions: string[];
   confidenceNote: string;
-  source?: 'ai' | 'rules';
+  source?: 'ai' | 'ai-pending' | 'ai-unavailable' | 'rules';
 }
 
 export interface Incident {

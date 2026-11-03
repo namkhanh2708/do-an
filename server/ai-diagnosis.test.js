@@ -50,6 +50,9 @@ test('AI diagnosis parses structured output and sends only the hostname', async 
       source: 'ai',
     });
     assert.equal(requestBody.model, 'test-model');
+    const systemPrompt = requestBody.input[0].content;
+    assert.match(systemPrompt, /toàn bộ nội dung.*bằng tiếng Việt/);
+    assert.match(systemPrompt, /possibleCauses.*recommendedActions.*confidenceNote/);
     const prompt = requestBody.input[1].content;
     assert.match(prompt, /example\.com/);
     assert.doesNotMatch(prompt, /private|token=/);
@@ -59,5 +62,48 @@ test('AI diagnosis parses structured output and sends only the hostname', async 
     else process.env.GROQ_API_KEY = originalKey;
     if (originalModel === undefined) delete process.env.GROQ_MODEL;
     else process.env.GROQ_MODEL = originalModel;
+  }
+});
+
+test('AI diagnosis retries Groq JSON generation failures before giving up', async () => {
+  const originalKey = process.env.GROQ_API_KEY;
+  const originalFetch = globalThis.fetch;
+  let attempts = 0;
+  process.env.GROQ_API_KEY = 'test-key';
+  globalThis.fetch = async () => {
+    attempts += 1;
+    if (attempts < 3) {
+      return new Response(JSON.stringify({
+        error: { message: 'Failed to generate JSON. Please adjust your prompt.' },
+      }), { status: 400, headers: { 'content-type': 'application/json' } });
+    }
+    return new Response(JSON.stringify({
+      output: [{
+        content: [{
+          type: 'output_text',
+          text: JSON.stringify({
+            possibleCauses: ['Có thể backend chưa phản hồi.'],
+            recommendedActions: ['Kiểm tra log backend.'],
+            confidenceNote: 'Cần đối chiếu log để xác nhận.',
+          }),
+        }],
+      }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+
+  try {
+    const diagnosis = await analyzeIncidentWithAI({
+      monitor: { name: 'Example site', url: 'https://example.com' },
+      check: { status: 'DOWN', httpStatus: 502, responseTimeMs: 200, error: '', checkedAt: new Date() },
+      recentChecks: [],
+    });
+
+    assert.equal(attempts, 3);
+    assert.equal(diagnosis.source, 'ai');
+    assert.deepEqual(diagnosis.possibleCauses, ['Có thể backend chưa phản hồi.']);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.GROQ_API_KEY;
+    else process.env.GROQ_API_KEY = originalKey;
   }
 });

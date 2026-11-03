@@ -8,7 +8,7 @@ import cron from 'node-cron';
 import express from 'express';
 import mongoose from 'mongoose';
 import nodemailer from 'nodemailer';
-import { diagnoseCheck } from './diagnosis.js';
+import { collectEvidence } from './diagnosis.js';
 import { analyzeIncidentWithAI, isAiDiagnosisEnabled } from './ai-diagnosis.js';
 import { createAuthRouter } from './auth.js';
 import { canViewMonitor, isAdmin, visibleMonitors } from './authorization.js';
@@ -25,7 +25,6 @@ let storageMode = 'memory';
 let mailer;
 const activeChecks = new Map();
 const deletingMonitors = new Set();
-const aiDiagnosisAttemptedMonitors = new Set();
 // Dem so lan SLOW lien tiep theo tung monitor (reset ve 0 khi site UP hoac DOWN)
 const slowConsecutiveCounts = new Map();
 
@@ -208,7 +207,6 @@ async function deleteMonitor(id) {
     return memory.monitors.length !== existing;
   } finally {
     deletingMonitors.delete(id);
-    aiDiagnosisAttemptedMonitors.delete(id);
   }
 }
 
@@ -284,11 +282,9 @@ async function resolveIncident(incident, resolvedAt) {
   };
   if (storageMode === 'mongodb') {
     await Incident.findByIdAndUpdate(incident.id, changes);
-    aiDiagnosisAttemptedMonitors.delete(incident.monitorId);
     return;
   }
   Object.assign(incident, changes);
-  aiDiagnosisAttemptedMonitors.delete(incident.monitorId);
 }
 
 async function resolveOpenIncidentsFor(monitorId, resolvedAt) {
@@ -399,14 +395,16 @@ async function sendAlertEmail(monitor, type, checkedAt, {
     '',
     'Dấu hiệu đã ghi nhận:',
     ...diagnosis.evidence.map((item) => `- ${item}`),
-    '',
-    'Nguyên nhân có thể :',
-    ...diagnosis.possibleCauses.map((item) => `- ${item}`),
-    '',
-    'Hướng kiểm tra/khắc phục:',
-    ...diagnosis.recommendedActions.map((item, index) => `${index + 1}. ${item}`),
-    '',
-    diagnosis.confidenceNote,
+    ...(diagnosis.source === 'ai-unavailable'
+      ? ['', 'AI không trả về kết quả phân tích hợp lệ; không sử dụng chẩn đoán theo quy tắc.']
+      : []),
+    ...(diagnosis.possibleCauses.length
+      ? ['', 'Nguyên nhân có thể:', ...diagnosis.possibleCauses.map((item) => `- ${item}`)]
+      : []),
+    ...(diagnosis.recommendedActions.length
+      ? ['', 'Hướng kiểm tra/khắc phục:', ...diagnosis.recommendedActions.map((item, index) => `${index + 1}. ${item}`)]
+      : []),
+    ...(diagnosis.confidenceNote ? ['', diagnosis.confidenceNote] : []),
   ] : [];
 
   const text = [...headerLines, ...diagLines].join('\n');
@@ -492,7 +490,14 @@ async function performCheck(id) {
     const previousStatus = monitor.status;
     const recentChecks = await checksFor({ monitorId: id, limit: 4 });
     const checkData = { monitorId: id, status, responseTimeMs, httpStatus, error: errorMessage, checkedAt };
-    let diagnosis = diagnoseCheck(checkData, [checkData, ...recentChecks], monitor.slowThresholdMs);
+    let diagnosis = status === 'UP' ? null : {
+      signal: status,
+      evidence: collectEvidence(checkData, [checkData, ...recentChecks], monitor.slowThresholdMs),
+      possibleCauses: [],
+      recommendedActions: [],
+      confidenceNote: 'Đang chờ AI phân tích.',
+      source: 'ai-pending',
+    };
     let incident = null;
     if (status === 'DOWN') {
       slowConsecutiveCounts.set(id, 0);
@@ -510,21 +515,23 @@ async function performCheck(id) {
 
     // --- Xữ lý cảnh báo & quản lý sự cố ---
     if (status === 'DOWN') {
-      await sendAlertEmail(updated, 'down', checkedAt, { diagnosis });
-
-      if (!aiDiagnosisAttemptedMonitors.has(id)) {
-        aiDiagnosisAttemptedMonitors.add(id);
-        const aiDiagnosis = await analyzeIncidentWithAI({
-          monitor: updated,
-          check: checkData,
-          recentChecks: [checkData, ...recentChecks],
-        });
-        if (aiDiagnosis) {
-          diagnosis = { ...diagnosis, ...aiDiagnosis, evidence: diagnosis.evidence };
-          if (incident) await updateIncidentDiagnosis(incident, diagnosis);
-          await updateCheckDiagnosis(check, diagnosis);
-        }
+      const aiDiagnosis = await analyzeIncidentWithAI({
+        monitor: updated,
+        check: checkData,
+        recentChecks: [checkData, ...recentChecks],
+      });
+      if (aiDiagnosis) {
+        diagnosis = { ...diagnosis, ...aiDiagnosis, evidence: diagnosis.evidence };
+      } else {
+        diagnosis = {
+          ...diagnosis,
+          source: 'ai-unavailable',
+          confidenceNote: 'AI không trả về kết quả phân tích hợp lệ. Không thay thế bằng chẩn đoán theo quy tắc.',
+        };
       }
+      if (incident) await updateIncidentDiagnosis(incident, diagnosis);
+      await updateCheckDiagnosis(check, diagnosis);
+      await sendAlertEmail(updated, 'down', checkedAt, { diagnosis });
     } else if (status === 'SLOW') {
       // Đếm số lần SLOW liên tiếp
       const prev = slowConsecutiveCounts.get(id) ?? 0;
@@ -539,8 +546,14 @@ async function performCheck(id) {
         });
         if (aiDiagnosis) {
           diagnosis = { ...diagnosis, ...aiDiagnosis, evidence: diagnosis.evidence };
-          await updateCheckDiagnosis(check, diagnosis);
+        } else {
+          diagnosis = {
+            ...diagnosis,
+            source: 'ai-unavailable',
+            confidenceNote: 'AI không trả về kết quả phân tích hợp lệ. Không thay thế bằng chẩn đoán theo quy tắc.',
+          };
         }
+        await updateCheckDiagnosis(check, diagnosis);
         await sendAlertEmail(updated, 'slow', checkedAt, { diagnosis, responseTimeMs, slowCount: next });
       }
       // Nếu trước đó đang DOWN, đóng sự cố và gửi email khôi phục

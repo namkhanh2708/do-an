@@ -4,13 +4,8 @@ function describeStatus(status) {
   return 'UP';
 }
 
-export function diagnoseCheck(check, recentChecks, slowThresholdMs) {
-  if (check.status === 'UP') return null;
-
+export function collectEvidence(check, recentChecks, slowThresholdMs) {
   const evidence = [];
-  const causes = [];
-  const actions = [];
-  const statusLabel = describeStatus(check.status);
 
   if (check.httpStatus !== null) {
     evidence.push(`Lượt kiểm tra nhận được HTTP ${check.httpStatus}.`);
@@ -31,6 +26,17 @@ export function diagnoseCheck(check, recentChecks, slowThresholdMs) {
   if (check.responseTimeMs !== null && check.responseTimeMs !== undefined) {
     evidence.push(`Thời gian phản hồi: ${check.responseTimeMs} ms${check.status === 'SLOW' ? ` (ngưỡng ${slowThresholdMs} ms)` : ''}.`);
   }
+
+  return evidence;
+}
+
+export function diagnoseCheck(check, recentChecks, slowThresholdMs) {
+  if (check.status === 'UP') return null;
+
+  const evidence = collectEvidence(check, recentChecks, slowThresholdMs);
+  const causes = [];
+  const actions = [];
+  const statusLabel = describeStatus(check.status);
 
   if (check.error?.includes('địa chỉ nội bộ') || check.error?.includes('địa chỉ IP công khai')) {
     causes.push('Địa chỉ đích có thể đang trỏ tới IP nội bộ nên bị quy tắc an toàn URL từ chối.');

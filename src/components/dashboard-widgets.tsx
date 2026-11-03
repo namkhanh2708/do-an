@@ -49,7 +49,15 @@ export function DiagnosisPanel({
           <Sparkles size={14} className={tw("diagnosis-sparkle-icon")} />
           <h3>Phân tích nguyên nhân sự cố · Incident Diagnosis</h3>
         </div>
-        <span className={tw("diagnosis-badge")}>{diagnosis?.source === 'ai' ? 'Phân tích AI' : 'Chẩn đoán tự động'}</span>
+        <span className={tw("diagnosis-badge")}>
+          {diagnosis?.source === 'ai'
+            ? 'Phân tích AI'
+            : diagnosis?.source === 'ai-pending'
+              ? 'Đang chờ AI'
+              : diagnosis?.source === 'ai-unavailable'
+                ? 'AI chưa phân tích được'
+                : 'Chẩn đoán tự động'}
+        </span>
       </div>
 
       {!diagnosis ? (
@@ -76,20 +84,26 @@ export function DiagnosisPanel({
           <div className={tw("diagnosis-box")}>
             <div className={tw("diagnosis-box-header")}>
               <HelpCircle size={13} className={tw("text-[#f3c24f] shrink-0")} />
-              <h4>Nguyên nhân có thể · Suspected</h4>
+              <h4>
+                {diagnosis.source === 'ai-unavailable' || diagnosis.source === 'ai-pending'
+                  ? 'Trạng thái phân tích AI'
+                  : 'Nguyên nhân có thể · Suspected'}
+              </h4>
             </div>
-            <ul className={tw("diagnosis-list")}>
-              {diagnosis.possibleCauses.map((item, index) => (
-                <li key={`${index}-${item}`}>{item}</li>
-              ))}
-            </ul>
+            {diagnosis.possibleCauses.length > 0 && (
+              <ul className={tw("diagnosis-list")}>
+                {diagnosis.possibleCauses.map((item, index) => (
+                  <li key={`${index}-${item}`}>{item}</li>
+                ))}
+              </ul>
+            )}
             {diagnosis.confidenceNote && (
               <p className={tw("diagnosis-note")}>{diagnosis.confidenceNote}</p>
             )}
           </div>
 
           {/* Box 3: Hướng khắc phục đề xuất */}
-          <div className={tw("diagnosis-box")}>
+          {diagnosis.recommendedActions.length > 0 && <div className={tw("diagnosis-box")}>
             <div className={tw("diagnosis-box-header")}>
               <Wrench size={13} className={tw("text-[#45cf91] shrink-0")} />
               <h4>Hướng xử lý đề xuất · Actions</h4>
@@ -99,7 +113,7 @@ export function DiagnosisPanel({
                 <li key={`${index}-${item}`}>{item}</li>
               ))}
             </ol>
-          </div>
+          </div>}
         </div>
       )}
     </section>
